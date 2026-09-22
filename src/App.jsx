@@ -428,7 +428,9 @@ function nextStepFor(t) {
   if (t.criteria.length === 0) return { tab: "criteria", icon: Scale, text: "Définissez les critères d'évaluation et leur pondération.", cta: "Définir les critères" };
   if (weightSum(t) !== 100) return { tab: "criteria", icon: Scale, text: `La pondération totalise ${weightSum(t)}% — ajustez-la à 100%.`, cta: "Corriger la pondération" };
   if (missingMandatoryDocs(t).length > 0) return { tab: "documents", icon: FileText, text: `${missingMandatoryDocs(t).length} document(s) obligatoire(s) à finaliser avant publication.`, cta: "Compléter les documents" };
-  if (t.suppliers.length === 0) return { tab: "suppliers", icon: Users, text: "AO prêt à publier. Une fois les offres reçues, ajoutez ici les soumissionnaires.", cta: "Ajouter les soumissionnaires" };
+  // Phase 1 (construction) terminée : les soumissionnaires ne sont pas encore connus, ce n'est
+  // pas une tâche en attente mais le passage naturel à la phase 2, une fois l'AO publié.
+  if (t.suppliers.length === 0) return { tab: "suppliers", icon: CheckCircle2, text: "AO prêt à être publié. Une fois les offres reçues, enregistrez les soumissionnaires ici pour démarrer l'évaluation.", cta: "Publier / passer à la réception", done: true };
   const notFullyEvaluated = t.suppliers.some(s => Object.keys(s.evaluations || {}).length < t.criteria.filter(c => c.name !== "Prix").length);
   if (notFullyEvaluated) return { tab: "evaluation", icon: BarChart3, text: "Certains fournisseurs n'ont pas encore été notés sur tous les critères.", cta: "Poursuivre l'évaluation" };
   return { tab: "synthesis", icon: FileBarChart2, text: "L'AO est prêt : consultez la synthèse et exportez le dossier.", cta: "Voir la synthèse", done: true };
@@ -2699,19 +2701,21 @@ function ConfirmDialog({ open, title, message, confirmLabel = "Confirmer", dange
   );
 }
 
+// Checklist de préparation avant publication (phase 1 uniquement) : on ne connaît pas encore
+// les soumissionnaires à ce stade, donc leur enregistrement (phase 2, après réception des
+// offres) n'a pas sa place ici.
 function QualityCheck({ t }) {
   const checks = [
     { label: "Besoin défini", ok: !!t.need.context }, { label: "Périmètre défini", ok: t.scope.included.length > 0 },
     { label: "Exigences définies", ok: t.requirements.length > 0 }, { label: "Critères définis", ok: t.criteria.length > 0 },
     { label: "Pondération = 100%", ok: t.criteria.length > 0 && weightSum(t) === 100 },
     { label: "Documents obligatoires prêts", ok: missingMandatoryDocs(t).length === 0 },
-    { label: "Fournisseurs enregistrés", ok: t.suppliers.length > 0 },
   ];
   const okCount = checks.filter(c => c.ok).length;
   const pct = Math.round((okCount / checks.length) * 100);
   return (
     <Card className="p-5 mb-6">
-      <div className="flex items-center justify-between mb-3"><div className="text-sm font-semibold" style={{ color: C.ink }}>AO prêt à {pct}%</div></div>
+      <div className="flex items-center justify-between mb-3"><div className="text-sm font-semibold" style={{ color: C.ink }}>AO prêt à être publié à {pct}%</div></div>
       <ProgressBar value={pct} />
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-1.5 mt-4 ao-stagger">
         {checks.map(c => <div key={c.label} className="flex items-center gap-2 text-sm">{c.ok ? <CheckCircle2 size={14} style={{ color: C.green }} /> : <Circle size={14} style={{ color: C.amber }} />}<span style={{ color: c.ok ? C.ink : C.inkSoft }}>{c.label}</span></div>)}
