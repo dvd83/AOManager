@@ -230,166 +230,6 @@ function defaultPriceScheduleRows() {
   return [{ ref: "", label: "", quantity: 1, unitPrice: "" }];
 }
 
-/* --------------------------------- DONNÉES DE DÉMONSTRATION (fictives) -------------------------- */
-
-function makeTender1() {
-  return {
-    id: "t1", reference: "AO-2026-001", title: "Solution de gestion des terminaux",
-    object: "Remplacement de l'outil actuel de gestion de parc et de patching des postes de travail.",
-    direction: "DSI", service: "Infrastructure & Exploitation", responsibleMetier: "N. Dubois",
-    buyer: "C. Keller", sponsor: "Direction des systèmes d'information",
-    type: "Logiciel", category: "IT", procedure: "Procédure ouverte", confidentiality: "Interne",
-    budget: 450000, dateLaunch: "2026-04-14", dateClose: "2026-06-02", dateDecision: "2026-06-30",
-    status: "evaluation",
-    need: {
-      context: "L'outil actuel de gestion des postes de travail est en fin de support et ne couvre plus correctement le patching automatisé du parc.",
-      problem: "Absence de visibilité en temps réel sur l'état de conformité et de sécurité du parc de terminaux.",
-      objectives: "Disposer d'une solution unique de gestion et de patching couvrant l'ensemble du parc, avec reporting de conformité.",
-      results: "Réduction du délai moyen de déploiement des correctifs critiques et amélioration du taux de conformité du parc.",
-      constraints: "Cohabitation possible avec l'outil actuel pendant la phase de migration ; contraintes RGPD/nLPD sur les données collectées.",
-      dependencies: "Annuaire Active Directory, outil de ticketing existant, réseau de sites distants.",
-    },
-    scope: {
-      included: ["Postes fixes et portables Windows", "Déploiement de correctifs (OS et applicatifs tiers)", "Inventaire matériel et logiciel", "Reporting de conformité"],
-      excluded: ["Gestion des serveurs", "Gestion des terminaux mobiles (hors périmètre, projet séparé)"],
-      interfaces: ["Active Directory", "Outil de ticketing (ServiceNow)", "Antivirus en place"],
-      hypotheses: ["Le parc actuel est estimé à environ 3'200 postes", "La migration se fait par vagues successives par site"],
-    },
-    documents: [
-      { id: "d1", name: "Procédure AO", category: "Procédure", mandatory: true, owner: "Achats", status: "Validé" },
-      { id: "d2", name: "Cahier des charges", category: "Technique", mandatory: true, owner: "Métier", status: "Validé" },
-      { id: "d3", name: "Cahier de réponses", category: "Technique", mandatory: true, owner: "Métier", status: "Envoyé" },
-      { id: "d4", name: "SLA", category: "Contractuel", mandatory: true, owner: "Métier", status: "Envoyé" },
-      { id: "d5", name: "NDA", category: "Administratif", mandatory: true, owner: "Achats", status: "Envoyé" },
-      { id: "d6", name: "Contrat", category: "Contractuel", mandatory: true, owner: "Achats", status: "En cours" },
-      { id: "d7", name: "Série de prix", category: "Financier", mandatory: true, owner: "Achats", status: "Envoyé" },
-      { id: "d8", name: "Développement durable", category: "Procédure", mandatory: false, owner: "Achats", status: "À préparer" },
-    ],
-    requirements: [
-      { id: "SEC-024", category: "Sécurité", description: "Authentification multi-facteur pour tous les comptes d'administration de la console.", criticality: "Bloquante", mandatory: true, verificationMethod: "Démonstration + documentation" },
-      { id: "SEC-031", category: "Sécurité", description: "Journalisation complète des actions d'administration, conservée 12 mois minimum.", criticality: "Critique", mandatory: true, verificationMethod: "Documentation" },
-      { id: "FCT-002", category: "Fonctionnel", description: "Déploiement de correctifs par vagues configurables avec fenêtre de maintenance.", criticality: "Majeure", mandatory: true, verificationMethod: "Démonstration" },
-      { id: "FCT-011", category: "Fonctionnel", description: "Tableau de bord de conformité du parc en temps quasi réel (< 1h).", criticality: "Majeure", mandatory: true, verificationMethod: "Démonstration" },
-      { id: "INT-004", category: "Intégration", description: "Intégration native avec Active Directory (synchronisation des groupes).", criticality: "Critique", mandatory: true, verificationMethod: "Documentation + test" },
-      { id: "SUP-007", category: "Support", description: "Support en français, niveau 2, avec engagement de délai de réponse contractuel.", criticality: "Normale", mandatory: false, verificationMethod: "Contrat / SLA" },
-    ],
-    criteria: [
-      { id: "c1", name: "Technique", weight: 30 }, { id: "c2", name: "Fonctionnel", weight: 20 },
-      { id: "c3", name: "Prix", weight: 30 }, { id: "c4", name: "Sécurité", weight: 10 }, { id: "c5", name: "Support", weight: 10 },
-    ],
-    suppliers: [
-      { id: "sA", name: "Fournisseur A — Nexora IT", contact: "j.martin@nexora.example",
-        documents: [{ name: "Cahier de réponses", received: true }, { name: "Offre financière", received: true }, { name: "SLA", received: true }, { name: "NDA", received: true }, { name: "Contrat", received: true }, { name: "Références", received: true }, { name: "Certifications", received: false }],
-        price: { initial: 180000, annual: 65000, maintenance: 22000, migration: 40000 },
-        evaluations: {
-          c1: [{ evaluator: "N. Dubois", note: 4, comment: "Architecture solide, bonne modularité." }, { evaluator: "T. Rossi", note: 4, comment: "RAS." }],
-          c2: [{ evaluator: "N. Dubois", note: 4, comment: "Couvre l'essentiel du besoin." }],
-          c4: [{ evaluator: "R. Haddad", note: 5, comment: "MFA et journalisation conformes, au-delà des attentes." }],
-          c5: [{ evaluator: "N. Dubois", note: 3, comment: "Support en anglais uniquement au niveau 2." }],
-        } },
-      { id: "sB", name: "Fournisseur B — Systemio", contact: "offres@systemio.example",
-        documents: [{ name: "Cahier de réponses", received: true }, { name: "Offre financière", received: true }, { name: "SLA", received: true }, { name: "NDA", received: true }, { name: "Contrat", received: true }, { name: "Références", received: true }, { name: "Certifications", received: true }],
-        price: { initial: 210000, annual: 58000, maintenance: 19000, migration: 35000 },
-        evaluations: {
-          c1: [{ evaluator: "N. Dubois", note: 5, comment: "Solution la plus mature du marché." }, { evaluator: "T. Rossi", note: 2, comment: "Complexité de déploiement sous-estimée dans l'offre." }],
-          c2: [{ evaluator: "N. Dubois", note: 5, comment: "Fonctionnalités très complètes." }],
-          c4: [{ evaluator: "R. Haddad", note: 4, comment: "Conforme, journalisation à confirmer sur 12 mois." }],
-          c5: [{ evaluator: "N. Dubois", note: 4, comment: "Support francophone, SLA contractuel clair." }],
-        } },
-      { id: "sC", name: "Fournisseur C — Helvetia Digital", contact: "appels-offres@helvetiadigital.example",
-        documents: [{ name: "Cahier de réponses", received: true }, { name: "Offre financière", received: true }, { name: "SLA", received: false }, { name: "NDA", received: true }, { name: "Contrat", received: true }, { name: "Références", received: false }, { name: "Certifications", received: true }],
-        price: { initial: 150000, annual: 52000, maintenance: 17000, migration: 30000 },
-        evaluations: {
-          c1: [{ evaluator: "N. Dubois", note: 3, comment: "Réponse correcte mais générique." }],
-          c2: [{ evaluator: "N. Dubois", note: 3, comment: "Certaines fonctions annoncées non détaillées." }],
-          c4: [{ evaluator: "R. Haddad", note: 3, comment: "MFA présent, journalisation à approfondir." }],
-          c5: [{ evaluator: "N. Dubois", note: 3, comment: "Références client limitées en Suisse romande." }],
-        } },
-    ],
-    history: [
-      { date: "2026-04-14 09:12", user: "C. Keller", action: "Création de l'AO" },
-      { date: "2026-04-22 11:03", user: "N. Dubois", action: "Cahier des charges finalisé" },
-      { date: "2026-05-02 15:40", user: "C. Keller", action: "Validation Achats de la procédure" },
-      { date: "2026-06-02 17:00", user: "Système", action: "Clôture de la réception des offres — 3 offres reçues" },
-      { date: "2026-08-20 10:15", user: "R. Haddad", action: "Évaluation du critère Sécurité saisie" },
-    ],
-  };
-}
-
-function makeTender2() {
-  return {
-    id: "t2", reference: "AO-2026-002", title: "Renouvellement infrastructure réseau",
-    object: "Remplacement des équipements réseau actifs des sites distants en fin de vie.",
-    direction: "DSI", service: "Infrastructure & Exploitation", responsibleMetier: "L. Perret",
-    buyer: "C. Keller", sponsor: "Direction des systèmes d'information",
-    type: "Réseau", category: "IT", procedure: "Procédure sur invitation", confidentiality: "Interne",
-    budget: 620000, dateLaunch: "2026-08-01", dateClose: "2026-10-15", dateDecision: "2026-11-05",
-    status: "preparation",
-    need: { context: "Les commutateurs des sites distants arrivent en fin de support constructeur en 2027.", problem: "", objectives: "", results: "", constraints: "", dependencies: "" },
-    scope: { included: [], excluded: [], interfaces: [], hypotheses: [] },
-    documents: [
-      { id: "d1", name: "Procédure AO", category: "Procédure", mandatory: true, owner: "Achats", status: "Validé" },
-      { id: "d2", name: "Cahier des charges", category: "Technique", mandatory: true, owner: "Métier", status: "En cours" },
-      { id: "d3", name: "Cahier de réponses", category: "Technique", mandatory: true, owner: "Métier", status: "À préparer" },
-      { id: "d4", name: "SLA", category: "Contractuel", mandatory: true, owner: "Métier", status: "À préparer" },
-      { id: "d6", name: "Contrat", category: "Contractuel", mandatory: true, owner: "Achats", status: "À préparer" },
-      { id: "d7", name: "Série de prix", category: "Financier", mandatory: true, owner: "Achats", status: "À préparer" },
-    ],
-    requirements: [{ id: "RES-001", category: "Infrastructure", description: "Disponibilité minimale de 99.9% sur les liens inter-sites.", criticality: "Critique", mandatory: true, verificationMethod: "SLA" }],
-    criteria: [], suppliers: [], history: [{ date: "2026-08-01 08:30", user: "C. Keller", action: "Création de l'AO" }],
-  };
-}
-
-function makeTender3() {
-  return {
-    id: "t3", reference: "AO-2026-003", title: "Prestations d'assistance IT", object: "Renforcement ponctuel des équipes support IT.",
-    direction: "DSI", service: "Support & Exploitation", responsibleMetier: "A. Moreau", buyer: "C. Keller", sponsor: "DSI",
-    type: "Prestations", category: "Services", procedure: "Procédure ouverte", confidentiality: "Interne",
-    budget: 180000, dateLaunch: "2026-09-10", dateClose: "", dateDecision: "",
-    status: "draft",
-    need: { context: "", problem: "", objectives: "", results: "", constraints: "", dependencies: "" },
-    scope: { included: [], excluded: [], interfaces: [], hypotheses: [] },
-    documents: [{ id: "d1", name: "Procédure AO", category: "Procédure", mandatory: true, owner: "Achats", status: "À préparer" }],
-    requirements: [], criteria: [], suppliers: [],
-    history: [{ date: "2026-09-01 14:00", user: "A. Moreau", action: "Création de l'AO (brouillon)" }],
-  };
-}
-
-function makeTender4() {
-  return {
-    id: "t4", reference: "AO-2026-004", title: "Renouvellement du parc matériel poste de travail",
-    object: "Remplacement de 800 postes de travail arrivant en fin de cycle.",
-    direction: "DSI", service: "Infrastructure & Exploitation", responsibleMetier: "N. Dubois", buyer: "S. Fontana", sponsor: "DSI",
-    type: "Matériel", category: "IT", procedure: "Procédure ouverte", confidentiality: "Interne",
-    budget: 520000, dateLaunch: "2026-05-05", dateClose: "2026-07-01", dateDecision: "2026-07-25",
-    status: "ongoing",
-    need: { context: "Le parc actuel arrive en fin de garantie constructeur par vagues successives.", problem: "Risque de panne non couverte par garantie.", objectives: "Renouveler le parc en conservant un standard matériel homogène.", results: "Parc renouvelé sans interruption de service.", constraints: "Livraison par lots pour ne pas saturer la logistique interne.", dependencies: "Planning de déploiement IT." },
-    scope: { included: ["Postes fixes", "Portables"], excluded: ["Écrans (marché séparé)"], interfaces: [], hypotheses: ["800 postes à renouveler sur 18 mois"] },
-    documents: [
-      { id: "d1", name: "Procédure AO", category: "Procédure", mandatory: true, owner: "Achats", status: "Validé" },
-      { id: "d2", name: "Cahier des charges", category: "Technique", mandatory: true, owner: "Métier", status: "Validé" },
-      { id: "d3", name: "Cahier de réponses", category: "Technique", mandatory: true, owner: "Métier", status: "Reçu" },
-      { id: "d7", name: "Série de prix", category: "Financier", mandatory: true, owner: "Achats", status: "Reçu" },
-    ],
-    requirements: [{ id: "MAT-001", category: "Matériel", description: "Garantie constructeur minimale de 3 ans sur site.", criticality: "Critique", mandatory: true, verificationMethod: "Documentation" }],
-    criteria: [{ id: "c1", name: "Technique", weight: 40 }, { id: "c2", name: "Prix", weight: 40 }, { id: "c3", name: "Support", weight: 20 }],
-    suppliers: [
-      { id: "sA", name: "Fournisseur A — CompuTrade", contact: "ao@computrade.example",
-        documents: [{ name: "Cahier de réponses", received: true }, { name: "Offre financière", received: true }, { name: "Références", received: false }],
-        price: { initial: 480000, annual: 0, maintenance: 0, migration: 0 }, evaluations: {} },
-      { id: "sB", name: "Fournisseur B — NordicPC", contact: "sales@nordicpc.example",
-        documents: [{ name: "Cahier de réponses", received: true }, { name: "Offre financière", received: true }, { name: "Références", received: true }],
-        price: { initial: 505000, annual: 0, maintenance: 0, migration: 0 }, evaluations: {} },
-    ],
-    history: [
-      { date: "2026-05-05 09:00", user: "S. Fontana", action: "Création de l'AO" },
-      { date: "2026-07-01 17:00", user: "Système", action: "Clôture réception — 2 offres reçues" },
-    ],
-  };
-}
-
-const INITIAL_TENDERS = [makeTender1(), makeTender2(), makeTender3(), makeTender4()];
-
 /* --------------------------------- UTILITAIRES --------------------------------- */
 
 function chf(n) { if (!n && n !== 0) return "—"; return n.toLocaleString("fr-CH") + " CHF"; }
@@ -1410,7 +1250,7 @@ function useIsMobile() {
   return isMobile;
 }
 
-function Sidebar({ view, setView, isMobile, open, onClose, onReset, onLogout, userEmail, isAdmin }) {
+function Sidebar({ view, setView, isMobile, open, onClose, onLogout, userEmail, isAdmin }) {
   const navItems = [
     { key: "dashboard", label: "Tableau de bord", icon: LayoutDashboard },
     { key: "new", label: "Nouvel appel d'offres", icon: FilePlus2 },
@@ -1452,7 +1292,6 @@ function Sidebar({ view, setView, isMobile, open, onClose, onReset, onLogout, us
       <div className="px-5 py-4 text-xs space-y-1.5" style={{ color: "#66738A", borderTop: "1px solid rgba(255,255,255,0.08)" }}>
         {userEmail && <div className="truncate" title={userEmail}>{userEmail}</div>}
         <div>Vos AO sont sauvegardés automatiquement.</div>
-        <button onClick={onReset} className="underline hover:text-white/80">Réinitialiser les données de démo</button>
         <button onClick={onLogout} className="underline hover:text-white/80 block">Se déconnecter</button>
       </div>
     </>
@@ -1512,7 +1351,7 @@ function greetingName(email) {
   return local ? local[0].toUpperCase() + local.slice(1) : "";
 }
 
-function Dashboard({ tenders, openTender, goNew, onDelete, userEmail }) {
+function Dashboard({ tenders, openTender, goNew, onDelete, userEmail, isAdmin }) {
   const counts = {}; Object.keys(STATUS_META).forEach(k => counts[k] = tenders.filter(t => t.status === k).length);
   const actions = [];
   tenders.forEach(t => {
@@ -1583,9 +1422,11 @@ function Dashboard({ tenders, openTender, goNew, onDelete, userEmail }) {
                       <div className="mt-2 w-full max-w-xs"><ProgressBar value={progress} /></div>
                     </div>
                     <div className="text-sm font-medium tabular-nums" style={{ color: C.inkSoft }}>{progress}%</div>
-                    <button onClick={e => { e.stopPropagation(); onDelete(t); }} title="Supprimer cet AO" className="p-1.5 rounded hover:bg-black/5 transition-colors">
-                      <Trash2 size={15} style={{ color: C.inkSoft }} />
-                    </button>
+                    {isAdmin && (
+                      <button onClick={e => { e.stopPropagation(); onDelete(t); }} title="Supprimer cet AO (admin)" className="p-1.5 rounded hover:bg-black/5 transition-colors">
+                        <Trash2 size={15} style={{ color: C.inkSoft }} />
+                      </button>
+                    )}
                     <ChevronRight size={16} className="transition-transform group-hover:translate-x-0.5" style={{ color: C.inkSoft }} />
                   </div>
                 );
@@ -2781,7 +2622,7 @@ function GuidanceBanner({ tender, onJump }) {
   );
 }
 
-function TenderDetail({ tender, updateTender, back, onDelete }) {
+function TenderDetail({ tender, updateTender, back, onDelete, isAdmin }) {
   const [tab, setTab] = useState("info");
   const [showCheck, setShowCheck] = useState(false);
   const [confirmingPublish, setConfirmingPublish] = useState(false);
@@ -2835,9 +2676,11 @@ function TenderDetail({ tender, updateTender, back, onDelete }) {
               )}
               <button onClick={exportAllDocuments} className={darkGhostBtn} style={darkGhostStyle}><Download size={14} /> Exporter le dossier</button>
               <button onClick={() => setShowCheck(s => !s)} className={darkGhostBtn} style={showCheck ? { backgroundColor: C.accent, border: `1px solid ${C.accent}` } : darkGhostStyle}><ShieldCheck size={14} /> {showCheck ? "Masquer le détail" : "Détail de préparation"}</button>
-              <button onClick={() => onDelete(tender)} title="Supprimer cet AO" className="p-2 rounded-lg transition-colors hover:bg-white/10" style={darkGhostStyle}>
-                <Trash2 size={15} color="#fff" />
-              </button>
+              {isAdmin && (
+                <button onClick={() => onDelete(tender)} title="Supprimer cet AO (admin)" className="p-2 rounded-lg transition-colors hover:bg-white/10" style={darkGhostStyle}>
+                  <Trash2 size={15} color="#fff" />
+                </button>
+              )}
             </div>
           </div>
         </div>
@@ -3167,7 +3010,6 @@ export default function App() {
   const [loaded, setLoaded] = useState(false);
   const [saveError, setSaveError] = useState(false);
   const [pendingDelete, setPendingDelete] = useState(null);
-  const [confirmingReset, setConfirmingReset] = useState(false);
   const syncTimers = React.useRef({});
 
   // Authentification : récupère la session en cours et réagit aux connexions/déconnexions.
@@ -3244,18 +3086,6 @@ export default function App() {
     setPendingDelete(null);
     await supabase.from("tenders").delete().eq("id", t.id);
   }
-  function resetDemoData() { setConfirmingReset(true); }
-  async function confirmResetDemoData() {
-    setView("dashboard"); setSelectedId(null); setConfirmingReset(false);
-    // Ne touche qu'aux AO de l'utilisateur courant, même si (admin) tenders contient ceux de tout le monde.
-    const ownIds = tenders.filter(t => ownerByTenderId[t.id] === session.user.id).map(t => t.id);
-    const others = tenders.filter(t => ownerByTenderId[t.id] !== session.user.id);
-    const fresh = INITIAL_TENDERS.map(t => ({ ...t, id: crypto.randomUUID() }));
-    setTenders([...others, ...fresh]);
-    setOwnerByTenderId(prev => ({ ...prev, ...Object.fromEntries(fresh.map(t => [t.id, session.user.id])) }));
-    if (ownIds.length) await supabase.from("tenders").delete().in("id", ownIds);
-    await supabase.from("tenders").insert(fresh.map(t => ({ id: t.id, user_id: session.user.id, reference: t.reference, title: t.title, data: t })));
-  }
   const selected = tenders.find(t => t.id === selectedId);
 
   if (session === undefined) {
@@ -3270,14 +3100,14 @@ export default function App() {
 
   return (
     <div className="flex min-h-screen" style={{ backgroundColor: C.bg, fontFamily: "Inter, ui-sans-serif, system-ui, -apple-system, sans-serif" }}>
-      <Sidebar view={view === "detail" ? "" : view} setView={v => { setView(v); setSelectedId(null); }} isMobile={isMobile} open={drawerOpen} onClose={() => setDrawerOpen(false)} onReset={resetDemoData} onLogout={() => supabase.auth.signOut()} userEmail={session.user.email} isAdmin={isAdmin} />
+      <Sidebar view={view === "detail" ? "" : view} setView={v => { setView(v); setSelectedId(null); }} isMobile={isMobile} open={drawerOpen} onClose={() => setDrawerOpen(false)} onLogout={() => supabase.auth.signOut()} userEmail={session.user.email} isAdmin={isAdmin} />
       <div className="flex-1 min-w-0">
         <TopBar isMobile={isMobile} onMenuClick={() => setDrawerOpen(true)} userEmail={session.user.email} crumbs={view === "dashboard" ? ["Tableau de bord"] : view === "new" ? ["Tableau de bord", "Nouvel appel d'offres"] : view === "admin" ? ["Administration"] : view === "suppliers-registry" ? ["Fournisseurs (registre)"] : ["Tableau de bord", selected?.reference || ""]} />
         {saveError && <div className="text-xs text-center py-1.5" style={{ backgroundColor: C.redSoft, color: C.red }}>La sauvegarde automatique a échoué pour la dernière modification — vos données restent visibles ici, mais pourraient ne pas persister après fermeture.</div>}
         <div key={view === "detail" ? `detail-${selectedId}` : view} className="ao-view-enter">
-          {view === "dashboard" && <Dashboard tenders={tenders} openTender={openTender} goNew={() => setView("new")} onDelete={deleteTender} userEmail={session.user.email} />}
+          {view === "dashboard" && <Dashboard tenders={tenders} openTender={openTender} goNew={() => setView("new")} onDelete={deleteTender} userEmail={session.user.email} isAdmin={isAdmin} />}
           {view === "new" && <NewTenderWizard onCreate={createTender} onCancel={() => setView("dashboard")} />}
-          {view === "detail" && selected && <TenderDetail tender={selected} updateTender={updateTender} back={() => setView("dashboard")} onDelete={deleteTender} />}
+          {view === "detail" && selected && <TenderDetail tender={selected} updateTender={updateTender} back={() => setView("dashboard")} onDelete={deleteTender} isAdmin={isAdmin} />}
           {view === "admin" && isAdmin && <AdminPanel currentUserId={session.user.id} />}
           {view === "suppliers-registry" && <SupplierRegistryPage isAdmin={isAdmin} />}
         </div>
@@ -3286,10 +3116,6 @@ export default function App() {
         title="Supprimer cet appel d'offres ?"
         message={pendingDelete ? `${pendingDelete.reference} — ${pendingDelete.title} sera définitivement supprimé. Cette action est irréversible.` : ""}
         onConfirm={confirmDeleteTender} onCancel={() => setPendingDelete(null)} />
-      <ConfirmDialog open={confirmingReset} danger confirmLabel="Réinitialiser"
-        title="Réinitialiser les données de démonstration ?"
-        message="Vos AO sauvegardés seront remplacés par les 4 exemples de démonstration. Cette action est irréversible."
-        onConfirm={confirmResetDemoData} onCancel={() => setConfirmingReset(false)} />
     </div>
   );
 }
