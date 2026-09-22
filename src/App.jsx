@@ -2357,20 +2357,36 @@ function LibraryPicker({ kind, onPick, title }) {
 
 function SuppliersTab({ t, updateTender }) {
   const [form, setForm] = useState({ name: "", contact: "" });
+  const [showRegistry, setShowRegistry] = useState(false);
+  const [registryItems, setRegistryItems] = useState(null);
+  const [registryQuery, setRegistryQuery] = useState("");
   const inputStyle = { border: `1px solid ${C.border}` };
   const notYetPublished = missingMandatoryDocs(t).length > 0 || t.criteria.length === 0;
+  const existingNames = new Set(t.suppliers.map(s => s.name.toLowerCase()));
 
-  function addSupplier() {
-    if (!form.name.trim()) return;
+  function insertSupplier(name, contact) {
     const expectedDocs = t.documents.filter(d => d.mandatory).map(d => ({ name: d.name, received: false }));
     updateTender(prev => ({ ...prev, suppliers: [...prev.suppliers, {
-      id: `s${Date.now()}`, name: form.name.trim(), contact: form.contact.trim(),
+      id: `s${Date.now()}`, name: name.trim(), contact: (contact || "").trim(),
       documents: expectedDocs.length ? expectedDocs : [{ name: "Cahier de réponses", received: false }, { name: "Offre financière", received: false }],
       price: { initial: 0, annual: 0, maintenance: 0, migration: 0 }, evaluations: {},
     }] }));
+  }
+  function addSupplier() {
+    if (!form.name.trim()) return;
+    insertSupplier(form.name, form.contact);
     upsertSupplierRegistry(form.name, form.contact).catch(() => {});
     setForm({ name: "", contact: "" });
   }
+  function addFromRegistry(item) { insertSupplier(item.name, item.email); }
+  function toggleRegistry() {
+    setShowRegistry(o => !o);
+    if (!showRegistry && registryItems === null) {
+      supabase.from("suppliers_registry").select("id, name, email, domain, region").order("name")
+        .then(({ data }) => setRegistryItems(data || []));
+    }
+  }
+  const filteredRegistry = (registryItems || []).filter(it => !registryQuery.trim() || it.name.toLowerCase().includes(registryQuery.toLowerCase()));
   function removeSupplier(id) { updateTender(prev => ({ ...prev, suppliers: prev.suppliers.filter(s => s.id !== id) })); }
   function toggleDoc(supplierId, idx) {
     updateTender(prev => ({ ...prev, suppliers: prev.suppliers.map(s => s.id !== supplierId ? s : { ...s, documents: s.documents.map((d, i) => i === idx ? { ...d, received: !d.received } : d) }) }));
@@ -2387,8 +2403,44 @@ function SuppliersTab({ t, updateTender }) {
           <div className="text-sm" style={{ color: C.ink }}>Cet onglet sert à enregistrer les <strong>soumissionnaires ayant déposé une offre</strong>, une fois l'AO publié. Les critères et/ou documents obligatoires ne sont pas encore finalisés — vous pouvez continuer, mais vérifiez que l'AO est bien prêt à être publié avant de solliciter des offres.</div>
         </div>
       )}
+      <div>
+        <button onClick={toggleRegistry} className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium shrink-0" style={{ border: `1px solid ${C.border}`, color: C.inkSoft, backgroundColor: C.surface }}>
+          <Building2 size={13} /> Choisir depuis le registre des fournisseurs
+        </button>
+        {showRegistry && (
+          <Card className="p-4 mt-2 ao-fade-in">
+            <input value={registryQuery} onChange={e => setRegistryQuery(e.target.value)} placeholder="Rechercher un fournisseur…" className="w-full px-3 py-2 rounded text-sm outline-none mb-3" style={inputStyle} />
+            {registryItems === null && <div className="text-xs" style={{ color: C.inkSoft }}>Chargement…</div>}
+            {registryItems !== null && filteredRegistry.length === 0 && <div className="text-xs" style={{ color: C.inkSoft }}>Aucun fournisseur dans le registre pour l'instant.</div>}
+            <div className="space-y-1.5 max-h-64 overflow-y-auto">
+              {filteredRegistry.map(it => {
+                const already = existingNames.has(it.name.toLowerCase());
+                return (
+                  <div key={it.id} className="flex items-start gap-2 p-2 rounded" style={{ border: `1px solid ${C.borderSoft}` }}>
+                    <div className="flex-1 min-w-0 text-sm" style={{ color: C.ink }}>
+                      {it.name}
+                      <div className="text-xs mt-0.5 flex items-center gap-1.5 flex-wrap" style={{ color: C.inkSoft }}>
+                        <span>{it.email || "—"}</span>
+                        {it.domain && <Badge color={C.accentDark} bg={C.accentSoft}>{it.domain}</Badge>}
+                        {it.region && <Badge color={C.inkSoft} bg={C.slateSoft}>{it.region}</Badge>}
+                      </div>
+                    </div>
+                    {already ? (
+                      <span className="text-xs shrink-0" style={{ color: C.inkSoft }}>Déjà ajouté</span>
+                    ) : (
+                      <button onClick={() => addFromRegistry(it)} className="flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium shrink-0 text-white" style={{ backgroundColor: C.accent }}>
+                        <Plus size={11} /> Ajouter
+                      </button>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          </Card>
+        )}
+      </div>
       <Card className="p-5">
-        <SectionTitle sub="Les documents obligatoires de l'onglet Documents sont repris automatiquement comme checklist attendue.">Ajouter un soumissionnaire</SectionTitle>
+        <SectionTitle sub="Les documents obligatoires de l'onglet Documents sont repris automatiquement comme checklist attendue.">Ajouter un nouveau soumissionnaire</SectionTitle>
         <div className="flex items-end gap-3">
           <label className="text-sm flex-1"><div className="mb-1" style={{ color: C.inkSoft }}>Nom du fournisseur</div>
             <input value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))} className="w-full px-3 py-2 rounded text-sm outline-none" style={inputStyle} /></label>
@@ -2956,13 +3008,15 @@ function AdminPanel({ currentUserId }) {
 function SupplierRegistryPage({ isAdmin }) {
   const [suppliers, setSuppliers] = useState(null);
   const [error, setError] = useState("");
-  const [form, setForm] = useState({ name: "", email: "" });
+  const [form, setForm] = useState({ name: "", email: "", domain: "", region: "" });
   const [query, setQuery] = useState("");
+  const [domainFilter, setDomainFilter] = useState("");
+  const [regionFilter, setRegionFilter] = useState("");
   const [importing, setImporting] = useState(false);
   const [importSummary, setImportSummary] = useState("");
 
   async function load() {
-    const { data, error } = await supabase.from("suppliers_registry").select("id, name, email, created_at").order("name");
+    const { data, error } = await supabase.from("suppliers_registry").select("id, name, email, domain, region, created_at").order("name");
     if (error) { setError(error.message); return; }
     setSuppliers(data || []);
   }
@@ -2970,9 +3024,9 @@ function SupplierRegistryPage({ isAdmin }) {
 
   async function addManual() {
     if (!form.name.trim()) return;
-    const { error } = await supabase.from("suppliers_registry").insert({ name: form.name.trim(), email: form.email.trim() || null });
+    const { error } = await supabase.from("suppliers_registry").insert({ name: form.name.trim(), email: form.email.trim() || null, domain: form.domain.trim() || null, region: form.region.trim() || null });
     if (error) { setError(error.message); return; }
-    setForm({ name: "", email: "" }); setError("");
+    setForm({ name: "", email: "", domain: "", region: "" }); setError("");
     load();
   }
 
@@ -2999,12 +3053,14 @@ function SupplierRegistryPage({ isAdmin }) {
         const keys = Object.keys(row);
         const nameKey = keys.find(k => /nom|name|fournisseur/i.test(k)) ?? keys[0];
         const emailKey = keys.find(k => /mail/i.test(k)) ?? keys[1];
+        const domainKey = keys.find(k => /m[ée]tier|domaine|activit/i.test(k));
+        const regionKey = keys.find(k => /r[ée]gion|zone|canton|ville/i.test(k));
         const name = String(row[nameKey] ?? "").trim();
         const email = String(row[emailKey] ?? "").trim();
         if (!name) { skipped++; continue; }
         if (email && existingEmails.has(email.toLowerCase())) { skipped++; continue; }
         if (email) existingEmails.add(email.toLowerCase());
-        toInsert.push({ name, email: email || null });
+        toInsert.push({ name, email: email || null, domain: domainKey ? String(row[domainKey] ?? "").trim() || null : null, region: regionKey ? String(row[regionKey] ?? "").trim() || null : null });
       }
       if (toInsert.length) {
         const { error } = await supabase.from("suppliers_registry").insert(toInsert);
@@ -3017,7 +3073,11 @@ function SupplierRegistryPage({ isAdmin }) {
     } finally { setImporting(false); }
   }
 
-  const filtered = (suppliers || []).filter(s => !query.trim() || s.name.toLowerCase().includes(query.toLowerCase()) || (s.email || "").toLowerCase().includes(query.toLowerCase()));
+  const domains = [...new Set((suppliers || []).map(s => s.domain).filter(Boolean))].sort();
+  const regions = [...new Set((suppliers || []).map(s => s.region).filter(Boolean))].sort();
+  const filtered = (suppliers || []).filter(s =>
+    (!query.trim() || s.name.toLowerCase().includes(query.toLowerCase()) || (s.email || "").toLowerCase().includes(query.toLowerCase())) &&
+    (!domainFilter || s.domain === domainFilter) && (!regionFilter || s.region === regionFilter));
 
   return (
     <div className="px-4 sm:px-8 py-5 sm:py-7 max-w-4xl">
@@ -3032,35 +3092,57 @@ function SupplierRegistryPage({ isAdmin }) {
       {isAdmin && (
         <Card className="p-5 mb-5">
           <SectionTitle>Ajouter des fournisseurs</SectionTitle>
-          <div className="flex flex-col sm:flex-row gap-3 sm:items-end mb-4">
-            <label className="text-sm flex-1"><div className="mb-1" style={{ color: C.inkSoft }}>Nom</div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-4">
+            <label className="text-sm"><div className="mb-1" style={{ color: C.inkSoft }}>Nom</div>
               <input value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))} className="w-full px-3 py-2 rounded text-sm outline-none" style={{ border: `1px solid ${C.border}` }} /></label>
-            <label className="text-sm flex-1"><div className="mb-1" style={{ color: C.inkSoft }}>Email</div>
+            <label className="text-sm"><div className="mb-1" style={{ color: C.inkSoft }}>Email</div>
               <input value={form.email} onChange={e => setForm(f => ({ ...f, email: e.target.value }))} placeholder="contact@fournisseur.example" className="w-full px-3 py-2 rounded text-sm outline-none" style={{ border: `1px solid ${C.border}` }} /></label>
-            <PrimaryButton icon={Plus} onClick={addManual}>Ajouter</PrimaryButton>
+            <label className="text-sm"><div className="mb-1" style={{ color: C.inkSoft }}>Métier / domaine</div>
+              <input value={form.domain} onChange={e => setForm(f => ({ ...f, domain: e.target.value }))} placeholder="Ex. Infrastructure, Développement…" className="w-full px-3 py-2 rounded text-sm outline-none" style={{ border: `1px solid ${C.border}` }} /></label>
+            <label className="text-sm"><div className="mb-1" style={{ color: C.inkSoft }}>Région / zone</div>
+              <input value={form.region} onChange={e => setForm(f => ({ ...f, region: e.target.value }))} placeholder="Ex. Genève, Suisse romande…" className="w-full px-3 py-2 rounded text-sm outline-none" style={{ border: `1px solid ${C.border}` }} /></label>
           </div>
-          <label className="inline-flex items-center gap-2 text-sm font-medium px-3.5 py-2 rounded-full cursor-pointer transition-colors hover:brightness-95" style={{ border: `1px solid ${C.accent}`, color: C.accentDark, backgroundColor: C.accentSoft }}>
-            <Upload size={14} /> {importing ? "Import en cours…" : "Importer un fichier Excel"}
-            <input type="file" accept=".xlsx,.xls,.csv" className="hidden" onChange={handleFile} disabled={importing} />
-          </label>
-          <div className="text-xs mt-2" style={{ color: C.inkSoft }}>Fichier .xlsx / .xls / .csv à deux colonnes : nom du fournisseur, email (en-têtes libres, ex. « Nom » / « Email »).</div>
+          <div className="flex flex-wrap items-center gap-3">
+            <PrimaryButton icon={Plus} onClick={addManual}>Ajouter</PrimaryButton>
+            <label className="inline-flex items-center gap-2 text-sm font-medium px-3.5 py-2 rounded-full cursor-pointer transition-colors hover:brightness-95" style={{ border: `1px solid ${C.accent}`, color: C.accentDark, backgroundColor: C.accentSoft }}>
+              <Upload size={14} /> {importing ? "Import en cours…" : "Importer un fichier Excel"}
+              <input type="file" accept=".xlsx,.xls,.csv" className="hidden" onChange={handleFile} disabled={importing} />
+            </label>
+          </div>
+          <div className="text-xs mt-2" style={{ color: C.inkSoft }}>Fichier .xlsx / .xls / .csv — colonnes nom et email obligatoires ; métier/domaine et région/zone optionnels (en-têtes libres).</div>
         </Card>
       )}
 
-      <div className="mb-3">
-        <input value={query} onChange={e => setQuery(e.target.value)} placeholder="Rechercher un fournisseur…" className="w-full sm:w-80 px-3 py-2 rounded text-sm outline-none" style={{ border: `1px solid ${C.border}` }} />
+      <div className="flex flex-wrap gap-3 mb-4">
+        <input value={query} onChange={e => setQuery(e.target.value)} placeholder="Rechercher un fournisseur…" className="flex-1 min-w-[200px] px-3 py-2 rounded text-sm outline-none" style={{ border: `1px solid ${C.border}` }} />
+        {domains.length > 0 && (
+          <select value={domainFilter} onChange={e => setDomainFilter(e.target.value)} className="px-3 py-2 rounded text-sm outline-none" style={{ border: `1px solid ${C.border}` }}>
+            <option value="">Tous les métiers</option>
+            {domains.map(d => <option key={d} value={d}>{d}</option>)}
+          </select>
+        )}
+        {regions.length > 0 && (
+          <select value={regionFilter} onChange={e => setRegionFilter(e.target.value)} className="px-3 py-2 rounded text-sm outline-none" style={{ border: `1px solid ${C.border}` }}>
+            <option value="">Toutes les régions</option>
+            {regions.map(r => <option key={r} value={r}>{r}</option>)}
+          </select>
+        )}
       </div>
 
       {suppliers === null ? (
         <div className="text-sm" style={{ color: C.inkSoft }}>Chargement…</div>
       ) : (
         <Card className="ao-stagger">
-          {filtered.length === 0 && <div className="px-5 py-8 text-sm text-center" style={{ color: C.inkSoft }}>Aucun fournisseur{query ? " ne correspond à la recherche" : " enregistré pour l'instant — il se remplira au fil des AO"}.</div>}
+          {filtered.length === 0 && <div className="px-5 py-8 text-sm text-center" style={{ color: C.inkSoft }}>Aucun fournisseur{query || domainFilter || regionFilter ? " ne correspond à la recherche" : " enregistré pour l'instant — il se remplira au fil des AO"}.</div>}
           {filtered.map((s, i) => (
             <div key={s.id} className="px-5 py-3.5 flex items-center gap-4" style={{ borderBottom: i < filtered.length - 1 ? `1px solid ${C.borderSoft}` : "none" }}>
               <div className="flex-1 min-w-0">
                 <div className="text-sm font-medium" style={{ color: C.ink }}>{s.name}</div>
-                <div className="text-xs mt-0.5" style={{ color: C.inkSoft }}>{s.email || "—"}</div>
+                <div className="text-xs mt-0.5 flex items-center gap-2 flex-wrap" style={{ color: C.inkSoft }}>
+                  <span>{s.email || "—"}</span>
+                  {s.domain && <Badge color={C.accentDark} bg={C.accentSoft}>{s.domain}</Badge>}
+                  {s.region && <Badge color={C.inkSoft} bg={C.slateSoft}>{s.region}</Badge>}
+                </div>
               </div>
               {isAdmin && <button onClick={() => remove(s.id)} title="Supprimer" className="p-1.5 rounded hover:bg-black/5 transition-colors"><Trash2 size={14} style={{ color: C.inkSoft }} /></button>}
             </div>
