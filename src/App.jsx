@@ -1476,7 +1476,15 @@ function Sidebar({ view, setView, isMobile, open, onClose, onReset, onLogout, us
   );
 }
 
-function TopBar({ crumbs, onMenuClick, isMobile }) {
+function initialsFor(email) {
+  if (!email) return "?";
+  const local = email.split("@")[0];
+  const parts = local.split(/[._-]+/).filter(Boolean);
+  const chars = parts.length >= 2 ? [parts[0][0], parts[1][0]] : [local[0], local[1] || ""];
+  return chars.join("").toUpperCase();
+}
+
+function TopBar({ crumbs, onMenuClick, isMobile, userEmail }) {
   return (
     <div className="flex items-center justify-between px-4 sm:px-8 py-4" style={{ borderBottom: `1px solid ${C.border}`, backgroundColor: C.surface }}>
       <div className="flex items-center gap-3 min-w-0">
@@ -1488,7 +1496,7 @@ function TopBar({ crumbs, onMenuClick, isMobile }) {
       <div className="flex items-center gap-4">
         <Search size={17} style={{ color: C.inkSoft }} />
         <Bell size={17} style={{ color: C.inkSoft }} />
-        <div className="w-7 h-7 rounded-full flex items-center justify-center text-xs font-semibold text-white" style={{ backgroundColor: C.accent }}>CK</div>
+        <div title={userEmail} className="w-7 h-7 rounded-full flex items-center justify-center text-xs font-semibold text-white shrink-0" style={{ background: `linear-gradient(135deg, ${C.accent}, ${C.accentDark})` }}>{initialsFor(userEmail)}</div>
       </div>
     </div>
   );
@@ -1496,7 +1504,15 @@ function TopBar({ crumbs, onMenuClick, isMobile }) {
 
 /* --------------------------------- DASHBOARD --------------------------------- */
 
-function Dashboard({ tenders, openTender, goNew, onDelete }) {
+const STATUS_ICON = { draft: PenLine, preparation: ListChecks, validation: ShieldCheck, ongoing: Users, evaluation: BarChart3, completed: CheckCircle2 };
+
+function greetingName(email) {
+  if (!email) return "";
+  const local = email.split("@")[0].split(/[._-]+/)[0];
+  return local ? local[0].toUpperCase() + local.slice(1) : "";
+}
+
+function Dashboard({ tenders, openTender, goNew, onDelete, userEmail }) {
   const counts = {}; Object.keys(STATUS_META).forEach(k => counts[k] = tenders.filter(t => t.status === k).length);
   const actions = [];
   tenders.forEach(t => {
@@ -1505,24 +1521,37 @@ function Dashboard({ tenders, openTender, goNew, onDelete }) {
     if (t.status === "evaluation" && t.suppliers.some(s => Object.keys(s.evaluations).length < t.criteria.length - 1)) actions.push({ ref: t.reference, text: "Votre évaluation est attendue", id: t.id });
     if (t.status === "preparation" && t.criteria.length === 0) actions.push({ ref: t.reference, text: "Critères d'évaluation à définir", id: t.id });
   });
+  const today = new Date().toLocaleDateString("fr-CH", { weekday: "long", day: "numeric", month: "long" });
+  const activeCount = tenders.filter(t => !["draft", "completed"].includes(t.status)).length;
 
   return (
     <div className="px-4 sm:px-8 py-5 sm:py-7 max-w-6xl">
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-6">
-        <div>
-          <h1 className="text-xl font-semibold" style={{ color: C.ink }}>Tableau de bord</h1>
-          <p className="text-sm mt-1" style={{ color: C.inkSoft }}>Vue d'ensemble de vos appels d'offres</p>
+      <div className="rounded-2xl px-6 sm:px-8 py-7 mb-8 relative overflow-hidden ao-scale-in" style={{ background: `linear-gradient(135deg, ${C.ink}, #263454)` }}>
+        <div className="absolute -right-10 -top-16 w-56 h-56 rounded-full opacity-20" style={{ background: `radial-gradient(circle, ${C.accent}, transparent 70%)` }} />
+        <div className="absolute right-24 -bottom-20 w-40 h-40 rounded-full opacity-10" style={{ background: `radial-gradient(circle, ${C.accent}, transparent 70%)` }} />
+        <div className="relative flex flex-col sm:flex-row sm:items-end justify-between gap-4">
+          <div>
+            <div className="text-xs uppercase tracking-wider mb-1" style={{ color: "#8C97AC" }}>{today}</div>
+            <h1 className="text-2xl font-semibold text-white">{greetingName(userEmail) ? `Bonjour, ${greetingName(userEmail)}` : "Bonjour"}</h1>
+            <p className="text-sm mt-1.5" style={{ color: "#B7C0D1" }}>{activeCount > 0 ? `${activeCount} appel${activeCount > 1 ? "s" : ""} d'offres actif${activeCount > 1 ? "s" : ""} en ce moment.` : "Aucun AO actif pour l'instant — lancez-en un nouveau."}</p>
+          </div>
+          <PrimaryButton onClick={goNew} icon={FilePlus2}>Nouvel appel d'offres</PrimaryButton>
         </div>
-        <PrimaryButton onClick={goNew} icon={FilePlus2}>Nouvel appel d'offres</PrimaryButton>
       </div>
 
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 mb-8 ao-stagger">
-        {Object.entries(STATUS_META).map(([key, meta]) => (
-          <Card key={key} className="p-4 hover:shadow-md hover:-translate-y-0.5 transition-all cursor-default" style={{ borderTop: `2px solid ${meta.color}` }}>
-            <div className="text-2xl font-semibold tabular-nums" style={{ color: C.ink }}>{counts[key]}</div>
-            <div className="text-xs mt-1" style={{ color: meta.color }}>{meta.label}</div>
-          </Card>
-        ))}
+        {Object.entries(STATUS_META).map(([key, meta]) => {
+          const Icon = STATUS_ICON[key] || Circle;
+          return (
+            <Card key={key} className="p-4 hover:shadow-md hover:-translate-y-0.5 transition-all cursor-default">
+              <div className="w-8 h-8 rounded-lg flex items-center justify-center mb-2.5" style={{ backgroundColor: meta.bg }}>
+                <Icon size={15} style={{ color: meta.color }} />
+              </div>
+              <div className="text-2xl font-semibold tabular-nums" style={{ color: C.ink }}>{counts[key]}</div>
+              <div className="text-xs mt-0.5" style={{ color: meta.color }}>{meta.label}</div>
+            </Card>
+          );
+        })}
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
@@ -3206,10 +3235,10 @@ export default function App() {
     <div className="flex min-h-screen" style={{ backgroundColor: C.bg, fontFamily: "Inter, ui-sans-serif, system-ui, -apple-system, sans-serif" }}>
       <Sidebar view={view === "detail" ? "" : view} setView={v => { setView(v); setSelectedId(null); }} isMobile={isMobile} open={drawerOpen} onClose={() => setDrawerOpen(false)} onReset={resetDemoData} onLogout={() => supabase.auth.signOut()} userEmail={session.user.email} isAdmin={isAdmin} />
       <div className="flex-1 min-w-0">
-        <TopBar isMobile={isMobile} onMenuClick={() => setDrawerOpen(true)} crumbs={view === "dashboard" ? ["Tableau de bord"] : view === "new" ? ["Tableau de bord", "Nouvel appel d'offres"] : view === "admin" ? ["Administration"] : view === "suppliers-registry" ? ["Fournisseurs (registre)"] : ["Tableau de bord", selected?.reference || ""]} />
+        <TopBar isMobile={isMobile} onMenuClick={() => setDrawerOpen(true)} userEmail={session.user.email} crumbs={view === "dashboard" ? ["Tableau de bord"] : view === "new" ? ["Tableau de bord", "Nouvel appel d'offres"] : view === "admin" ? ["Administration"] : view === "suppliers-registry" ? ["Fournisseurs (registre)"] : ["Tableau de bord", selected?.reference || ""]} />
         {saveError && <div className="text-xs text-center py-1.5" style={{ backgroundColor: C.redSoft, color: C.red }}>La sauvegarde automatique a échoué pour la dernière modification — vos données restent visibles ici, mais pourraient ne pas persister après fermeture.</div>}
         <div key={view === "detail" ? `detail-${selectedId}` : view} className="ao-view-enter">
-          {view === "dashboard" && <Dashboard tenders={tenders} openTender={openTender} goNew={() => setView("new")} onDelete={deleteTender} />}
+          {view === "dashboard" && <Dashboard tenders={tenders} openTender={openTender} goNew={() => setView("new")} onDelete={deleteTender} userEmail={session.user.email} />}
           {view === "new" && <NewTenderWizard onCreate={createTender} onCancel={() => setView("dashboard")} />}
           {view === "detail" && selected && <TenderDetail tender={selected} updateTender={updateTender} back={() => setView("dashboard")} onDelete={deleteTender} />}
           {view === "admin" && isAdmin && <AdminPanel currentUserId={session.user.id} />}
