@@ -1350,8 +1350,9 @@ function greetingName(email) {
   return local ? local[0].toUpperCase() + local.slice(1) : "";
 }
 
-function Dashboard({ tenders, openTender, goNew, onDelete, userEmail, isAdmin }) {
+function Dashboard({ tenders, openTender, goNew, onDelete, userEmail, firstName, isAdmin }) {
   const [statusFilter, setStatusFilter] = useState(null);
+  const greeting = firstName || greetingName(userEmail);
   const counts = {}; Object.keys(STATUS_META).forEach(k => counts[k] = tenders.filter(t => t.status === k).length);
   const visibleTenders = statusFilter ? tenders.filter(t => t.status === statusFilter) : tenders;
   const actions = [];
@@ -1372,7 +1373,7 @@ function Dashboard({ tenders, openTender, goNew, onDelete, userEmail, isAdmin })
         <div className="relative flex flex-col sm:flex-row sm:items-end justify-between gap-4">
           <div>
             <div className="text-xs uppercase tracking-wider mb-1" style={{ color: "#8C97AC" }}>{today}</div>
-            <h1 className="text-2xl font-semibold text-white">{greetingName(userEmail) ? `Bonjour, ${greetingName(userEmail)}` : "Bonjour"}</h1>
+            <h1 className="text-2xl font-semibold text-white">{greeting ? `Bonjour, ${greeting}` : "Bonjour"}</h1>
             <p className="text-sm mt-1.5" style={{ color: "#B7C0D1" }}>{activeCount > 0 ? `${activeCount} appel${activeCount > 1 ? "s" : ""} d'offres actif${activeCount > 1 ? "s" : ""} en ce moment.` : "Aucun AO actif pour l'instant — lancez-en un nouveau."}</p>
           </div>
           <PrimaryButton onClick={goNew} icon={FilePlus2}>Nouvel appel d'offres</PrimaryButton>
@@ -2882,10 +2883,14 @@ function TenderDetail({ tender, updateTender, back, onDelete, isAdmin }) {
 
 const STORAGE_KEY = "tenders";
 
-function LoginScreen({ onLoggedIn }) {
-  const [mode, setMode] = useState("login");
+const APP_URL = typeof window !== "undefined" ? window.location.origin + import.meta.env.BASE_URL : "";
+
+function LoginScreen() {
+  const [mode, setMode] = useState("login"); // login | signup | forgot
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [firstName, setFirstName] = useState("");
+  const [lastName, setLastName] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [info, setInfo] = useState("");
@@ -2897,11 +2902,18 @@ function LoginScreen({ onLoggedIn }) {
       if (mode === "login") {
         const { error } = await supabase.auth.signInWithPassword({ email, password });
         if (error) throw error;
-      } else {
-        const { error } = await supabase.auth.signUp({ email, password });
+      } else if (mode === "signup") {
+        const { error } = await supabase.auth.signUp({
+          email, password,
+          options: { data: { first_name: firstName.trim(), last_name: lastName.trim() }, emailRedirectTo: APP_URL },
+        });
         if (error) throw error;
         setInfo("Compte créé. Vérifiez votre boîte mail pour confirmer votre adresse, puis connectez-vous.");
         setMode("login");
+      } else {
+        const { error } = await supabase.auth.resetPasswordForEmail(email, { redirectTo: APP_URL });
+        if (error) throw error;
+        setInfo("Si un compte existe avec cet email, un lien de réinitialisation vient d'être envoyé.");
       }
     } catch (err) {
       setError(err.message || "Une erreur est survenue.");
@@ -2910,31 +2922,87 @@ function LoginScreen({ onLoggedIn }) {
     }
   }
 
+  const titles = { login: "Connexion", signup: "Créer un compte", forgot: "Mot de passe oublié" };
+
   return (
     <div className="flex items-center justify-center min-h-screen px-4" style={{ backgroundColor: C.bg }}>
       <div className="w-full max-w-sm p-6 rounded-xl" style={{ backgroundColor: C.surface, border: `1px solid ${C.border}`, boxShadow: "0 10px 30px rgba(0,0,0,0.08)" }}>
         <div className="mb-2">
           <img src={logoWordmark} alt="AO Manager" className="h-8 w-auto" />
         </div>
-        <div className="text-lg font-semibold mb-4" style={{ color: C.ink }}>{mode === "login" ? "Connexion" : "Créer un compte"}</div>
+        <div className="text-lg font-semibold mb-4" style={{ color: C.ink }}>{titles[mode]}</div>
         <form onSubmit={submit} className="space-y-3">
+          {mode === "signup" && (
+            <div className="grid grid-cols-2 gap-3">
+              <label className="block text-sm"><div className="mb-1" style={{ color: C.inkSoft }}>Prénom</div>
+                <input required value={firstName} onChange={e => setFirstName(e.target.value)} className="w-full px-3 py-2 rounded text-sm outline-none" style={{ border: `1px solid ${C.border}` }} /></label>
+              <label className="block text-sm"><div className="mb-1" style={{ color: C.inkSoft }}>Nom</div>
+                <input required value={lastName} onChange={e => setLastName(e.target.value)} className="w-full px-3 py-2 rounded text-sm outline-none" style={{ border: `1px solid ${C.border}` }} /></label>
+            </div>
+          )}
           <label className="block text-sm">
             <div className="mb-1" style={{ color: C.inkSoft }}>Email</div>
             <input type="email" required value={email} onChange={e => setEmail(e.target.value)} className="w-full px-3 py-2 rounded text-sm outline-none" style={{ border: `1px solid ${C.border}` }} />
           </label>
-          <label className="block text-sm">
-            <div className="mb-1" style={{ color: C.inkSoft }}>Mot de passe</div>
-            <input type="password" required minLength={6} value={password} onChange={e => setPassword(e.target.value)} className="w-full px-3 py-2 rounded text-sm outline-none" style={{ border: `1px solid ${C.border}` }} />
-          </label>
+          {mode !== "forgot" && (
+            <label className="block text-sm">
+              <div className="mb-1" style={{ color: C.inkSoft }}>Mot de passe</div>
+              <input type="password" required minLength={6} value={password} onChange={e => setPassword(e.target.value)} className="w-full px-3 py-2 rounded text-sm outline-none" style={{ border: `1px solid ${C.border}` }} />
+            </label>
+          )}
+          {mode === "login" && (
+            <button type="button" onClick={() => { setMode("forgot"); setError(""); setInfo(""); }} className="text-xs" style={{ color: C.accentDark }}>Mot de passe oublié ?</button>
+          )}
           {error && <div className="text-xs" style={{ color: C.red }}>{error}</div>}
           {info && <div className="text-xs" style={{ color: C.green }}>{info}</div>}
           <button type="submit" disabled={busy} className="w-full px-4 py-2.5 rounded-full text-sm font-semibold text-white disabled:opacity-50" style={{ backgroundColor: C.accent }}>
-            {busy ? "Veuillez patienter…" : mode === "login" ? "Se connecter" : "Créer mon compte"}
+            {busy ? "Veuillez patienter…" : mode === "login" ? "Se connecter" : mode === "signup" ? "Créer mon compte" : "Envoyer le lien de réinitialisation"}
           </button>
         </form>
-        <button onClick={() => { setMode(m => m === "login" ? "signup" : "login"); setError(""); setInfo(""); }} className="w-full text-center text-xs mt-4" style={{ color: C.inkSoft }}>
-          {mode === "login" ? "Pas encore de compte ? Créez-en un" : "Déjà un compte ? Connectez-vous"}
-        </button>
+        {mode === "forgot" ? (
+          <button onClick={() => { setMode("login"); setError(""); setInfo(""); }} className="w-full text-center text-xs mt-4" style={{ color: C.inkSoft }}>Retour à la connexion</button>
+        ) : (
+          <button onClick={() => { setMode(m => m === "login" ? "signup" : "login"); setError(""); setInfo(""); }} className="w-full text-center text-xs mt-4" style={{ color: C.inkSoft }}>
+            {mode === "login" ? "Pas encore de compte ? Créez-en un" : "Déjà un compte ? Connectez-vous"}
+          </button>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function ResetPasswordScreen({ onDone }) {
+  const [password, setPassword] = useState("");
+  const [confirm, setConfirm] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+
+  async function submit(e) {
+    e.preventDefault();
+    if (password !== confirm) { setError("Les deux mots de passe ne correspondent pas."); return; }
+    setBusy(true); setError("");
+    const { error } = await supabase.auth.updateUser({ password });
+    setBusy(false);
+    if (error) { setError(error.message || "Une erreur est survenue."); return; }
+    onDone();
+  }
+
+  return (
+    <div className="flex items-center justify-center min-h-screen px-4" style={{ backgroundColor: C.bg }}>
+      <div className="w-full max-w-sm p-6 rounded-xl" style={{ backgroundColor: C.surface, border: `1px solid ${C.border}`, boxShadow: "0 10px 30px rgba(0,0,0,0.08)" }}>
+        <div className="mb-2"><img src={logoWordmark} alt="AO Manager" className="h-8 w-auto" /></div>
+        <div className="text-lg font-semibold mb-1" style={{ color: C.ink }}>Choisir un nouveau mot de passe</div>
+        <p className="text-xs mb-4" style={{ color: C.inkSoft }}>Suite à votre demande de réinitialisation.</p>
+        <form onSubmit={submit} className="space-y-3">
+          <label className="block text-sm"><div className="mb-1" style={{ color: C.inkSoft }}>Nouveau mot de passe</div>
+            <input type="password" required minLength={6} value={password} onChange={e => setPassword(e.target.value)} className="w-full px-3 py-2 rounded text-sm outline-none" style={{ border: `1px solid ${C.border}` }} /></label>
+          <label className="block text-sm"><div className="mb-1" style={{ color: C.inkSoft }}>Confirmer le mot de passe</div>
+            <input type="password" required minLength={6} value={confirm} onChange={e => setConfirm(e.target.value)} className="w-full px-3 py-2 rounded text-sm outline-none" style={{ border: `1px solid ${C.border}` }} /></label>
+          {error && <div className="text-xs" style={{ color: C.red }}>{error}</div>}
+          <button type="submit" disabled={busy} className="w-full px-4 py-2.5 rounded-full text-sm font-semibold text-white disabled:opacity-50" style={{ backgroundColor: C.accent }}>
+            {busy ? "Veuillez patienter…" : "Mettre à jour le mot de passe"}
+          </button>
+        </form>
       </div>
     </div>
   );
@@ -3174,9 +3242,15 @@ export default function App() {
   const syncTimers = React.useRef({});
 
   // Authentification : récupère la session en cours et réagit aux connexions/déconnexions.
+  // Un clic sur le lien de réinitialisation de mot de passe ouvre une session "recovery" —
+  // on l'intercepte pour afficher l'écran de choix du nouveau mot de passe avant l'app.
+  const [passwordRecovery, setPasswordRecovery] = useState(false);
   useEffect(() => {
     supabase.auth.getSession().then(({ data }) => setSession(data.session ?? null));
-    const { data: sub } = supabase.auth.onAuthStateChange((_event, s) => setSession(s));
+    const { data: sub } = supabase.auth.onAuthStateChange((event, s) => {
+      if (event === "PASSWORD_RECOVERY") setPasswordRecovery(true);
+      setSession(s);
+    });
     return () => sub.subscription.unsubscribe();
   }, []);
 
@@ -3185,7 +3259,7 @@ export default function App() {
   useEffect(() => {
     if (!session) { setProfile(null); return; }
     let cancelled = false;
-    supabase.from("profiles").select("role, email").eq("id", session.user.id).single()
+    supabase.from("profiles").select("role, email, first_name, last_name").eq("id", session.user.id).single()
       .then(({ data }) => { if (!cancelled) setProfile(data || { role: "user" }); });
     return () => { cancelled = true; };
   }, [session]);
@@ -3252,6 +3326,9 @@ export default function App() {
   if (session === undefined) {
     return <div className="flex items-center justify-center min-h-screen text-sm" style={{ backgroundColor: C.bg, color: C.inkSoft }}>Chargement…</div>;
   }
+  if (passwordRecovery) {
+    return <ResetPasswordScreen onDone={() => setPasswordRecovery(false)} />;
+  }
   if (session === null) {
     return <LoginScreen />;
   }
@@ -3266,7 +3343,7 @@ export default function App() {
         <TopBar isMobile={isMobile} onMenuClick={() => setDrawerOpen(true)} userEmail={session.user.email} crumbs={view === "dashboard" ? ["Tableau de bord"] : view === "new" ? ["Tableau de bord", "Nouvel appel d'offres"] : view === "admin" ? ["Administration"] : view === "suppliers-registry" ? ["Fournisseurs (registre)"] : ["Tableau de bord", selected?.reference || ""]} />
         {saveError && <div className="text-xs text-center py-1.5" style={{ backgroundColor: C.redSoft, color: C.red }}>La sauvegarde automatique a échoué pour la dernière modification — vos données restent visibles ici, mais pourraient ne pas persister après fermeture.</div>}
         <div key={view === "detail" ? `detail-${selectedId}` : view} className="ao-view-enter">
-          {view === "dashboard" && <Dashboard tenders={tenders} openTender={openTender} goNew={() => setView("new")} onDelete={deleteTender} userEmail={session.user.email} isAdmin={isAdmin} />}
+          {view === "dashboard" && <Dashboard tenders={tenders} openTender={openTender} goNew={() => setView("new")} onDelete={deleteTender} userEmail={session.user.email} firstName={profile?.first_name} isAdmin={isAdmin} />}
           {view === "new" && <NewTenderWizard onCreate={createTender} onCancel={() => setView("dashboard")} />}
           {view === "detail" && selected && <TenderDetail tender={selected} updateTender={updateTender} back={() => setView("dashboard")} onDelete={deleteTender} isAdmin={isAdmin} />}
           {view === "admin" && isAdmin && <AdminPanel currentUserId={session.user.id} />}
