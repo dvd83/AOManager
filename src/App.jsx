@@ -1165,7 +1165,7 @@ function AIQuestionBox({ tender, updateTender, placeholder, contextNote }) {
         `{"summary": "résumé en 1-2 phrases de ta réponse", "items": [{"type": "exigence"|"critere"|"inclus"|"exclus"|"contrainte", "label": "titre court de la suggestion", "detail": "explication ou justification en 1 phrase", "criticality": "Bloquante"|"Critique"|"Majeure"|"Normale"|"Souhaitable" (uniquement si type=exigence), "weight": nombre (uniquement si type=critere)}]}. ` +
         `Propose entre 3 et 8 items concrets et actionnables, directement liés à la question.\n\n` +
         `Contexte de l'AO :\n${context}\n\nQuestion du chef de projet : ${question}`;
-      const res = await callClaudeJSON(prompt, 1200);
+      const res = await callClaudeJSON(prompt, 2000);
       setSummary(res.summary || "");
       setItems(Array.isArray(res.items) ? res.items : []);
     } catch (e) {
@@ -1493,7 +1493,7 @@ function NewTenderWizard({ onCreate, onCancel }) {
         `"contexte" (string), "problematique" (string), "objectifs" (array de strings courtes), "perimetre" (array de strings courtes), ` +
         `"exigences_potentielles" (array de strings courtes), "contraintes" (array de strings courtes), "risques" (array de strings courtes), "indicateurs_reussite" (array de strings courtes). ` +
         `Reste générique et n'invente aucune règle juridique ou procédure interne spécifique. Description du besoin : """${rawNeed}"""`;
-      setStructured(await callClaudeJSON(prompt, 1000));
+      setStructured(await callClaudeJSON(prompt, 3000));
     } catch (e) {
       setAiError(`La structuration automatique a échoué (${e.message || "erreur inconnue"}). Vous pouvez continuer et compléter le besoin manuellement.`);
     } finally { setLoadingAI(false); }
@@ -1949,7 +1949,7 @@ function QuestionsDocEditor({ doc, tender, updateTender, onGenerate }) {
         `Style attendu, par exemple : « Décrivez l'approche que vous recommandez pour... », « Présentez un ou plusieurs projets comparables auxquels vous avez participé », « Décrivez le modèle de gouvernance que vous recommandez pour... ». ` +
         `À partir du contexte complet de l'AO ci-dessous (besoin, périmètre, exigences déjà définies, critères, caractéristiques du marché), propose 4 à 6 questions pertinentes et spécifiques à CET AO — évite les questions génériques qui iraient pour n'importe quel projet. Ne propose pas de question déjà posée. N'invente aucun fait sur l'AO qui ne soit pas dans le contexte fourni. ` +
         `Réponds UNIQUEMENT avec un tableau JSON d'objets, sans texte autour, où chaque objet a la clé "question" (string).\n\nContexte de l'AO :\n${context}`;
-      const suggestions = await callClaudeJSON(prompt, 1200);
+      const suggestions = await callClaudeJSON(prompt, 2000);
       if (!Array.isArray(suggestions)) throw new Error("Format de réponse inattendu");
       updateTender(prev => {
         const base = prev.needQuestions || [];
@@ -2082,7 +2082,7 @@ function RequirementsTab({ t, updateTender }) {
       const prompt = `Tu es un assistant Achats. À partir du contexte d'appel d'offres ci-dessous, propose 5 à 8 exigences pertinentes à ajouter à la liste, en les répartissant dans les types standards suivants lorsque pertinent : ${STANDARD_REQUIREMENT_CATEGORIES.join(", ")} (ou un autre type court si aucun ne convient). ` +
         `N'invente aucun chiffre ou règle spécifique non mentionnée ; reste générique et professionnel. Réponds UNIQUEMENT avec un tableau JSON d'objets, sans texte autour, où chaque objet a les clés : "category" (string courte), "description" (string), "criticality" (une valeur parmi Bloquante, Critique, Majeure, Normale, Souhaitable), "mandatory" (booléen), "verificationMethod" (string courte).\n\n` +
         `Titre : ${t.title}\nObjet : ${t.object}\nContexte : ${t.need.context}\nObjectifs : ${t.need.objectives}\nPérimètre inclus : ${(t.scope.included || []).join(", ")}\nExigences déjà présentes : ${t.requirements.map(r => r.description).join(" | ") || "aucune"}`;
-      const suggestions = await callClaudeJSON(prompt, 1500);
+      const suggestions = await callClaudeJSON(prompt, 2500);
       if (!Array.isArray(suggestions)) throw new Error("Format de réponse inattendu");
       updateTender(prev => {
         let existingIds = prev.requirements.map(r => r.id);
@@ -2238,7 +2238,7 @@ function CriteriaTab({ t, updateTender }) {
       const prompt = `Tu es un assistant Achats. Propose une grille de 4 à 6 critères d'évaluation pour l'appel d'offres ci-dessous, avec une pondération en % dont le total fait exactement 100. Inclure systématiquement un critère « Prix ». ` +
         `Réponds UNIQUEMENT avec un tableau JSON d'objets, sans texte autour, où chaque objet a les clés "name" (string courte) et "weight" (nombre entier).\n\n` +
         `Titre : ${t.title}\nObjet : ${t.object}\nContexte : ${t.need.context}\nExigences : ${t.requirements.map(r => `${r.category} — ${r.description}`).join(" | ") || "aucune"}`;
-      const suggestions = await callClaudeJSON(prompt, 800);
+      const suggestions = await callClaudeJSON(prompt, 1500);
       if (!Array.isArray(suggestions)) throw new Error("Format de réponse inattendu");
       updateTender(prev => ({ ...prev, criteria: suggestions.map((s, i) => ({ id: `c${Date.now()}_${i}`, name: s.name || "Critère", weight: Number(s.weight) || 0 })) }));
     } catch (e) {
