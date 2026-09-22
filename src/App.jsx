@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from "react";
 import { supabase } from "./supabaseClient.js";
 import * as XLSX from "xlsx";
-import logoIcon from "./assets/logo-icon.png";
+import logoIcon from "./assets/logo-icon.svg";
+import logoWordmark from "./assets/logo-wordmark.svg";
 import {
   LayoutDashboard, FilePlus2, FileText, ListChecks, Scale, Users,
   ClipboardCheck, BarChart3, FileBarChart2, History, ChevronRight,
@@ -2915,11 +2916,8 @@ function LoginScreen({ onLoggedIn }) {
   return (
     <div className="flex items-center justify-center min-h-screen px-4" style={{ backgroundColor: C.bg }}>
       <div className="w-full max-w-sm p-6 rounded-xl" style={{ backgroundColor: C.surface, border: `1px solid ${C.border}`, boxShadow: "0 10px 30px rgba(0,0,0,0.08)" }}>
-        <div className="flex items-center gap-2 mb-1">
-          <div className="w-7 h-7 rounded-md flex items-center justify-center p-1" style={{ backgroundColor: C.ink }}>
-            <img src={logoIcon} alt="" className="w-full h-auto" />
-          </div>
-          <div className="text-sm font-semibold" style={{ color: C.ink }}>AO Manager</div>
+        <div className="mb-2">
+          <img src={logoWordmark} alt="AO Manager" className="h-8 w-auto" />
         </div>
         <div className="text-lg font-semibold mb-4" style={{ color: C.ink }}>{mode === "login" ? "Connexion" : "Créer un compte"}</div>
         <form onSubmit={submit} className="space-y-3">
