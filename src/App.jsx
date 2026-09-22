@@ -1,8 +1,8 @@
 import React, { useState, useEffect } from "react";
 import { supabase } from "./supabaseClient.js";
 import * as XLSX from "xlsx";
-import logoIcon from "./assets/logo-icon.svg";
 import logoWordmark from "./assets/logo-wordmark.svg";
+import logoWordmarkDark from "./assets/logo-wordmark-dark.svg";
 import {
   LayoutDashboard, FilePlus2, FileText, ListChecks, Scale, Users,
   ClipboardCheck, BarChart3, FileBarChart2, History, ChevronRight,
@@ -1269,11 +1269,8 @@ function Sidebar({ view, setView, isMobile, open, onClose, onLogout, userEmail, 
     <>
       <div className="px-5 pt-6 pb-5 flex items-start justify-between" style={{ borderBottom: "1px solid rgba(255,255,255,0.08)" }}>
         <div>
-          <div className="flex items-center gap-2 mb-2">
-            <img src={logoIcon} alt="" className="h-6 w-auto" />
-          </div>
-          <div className="text-[13px] tracking-wide font-semibold text-white">AO Manager</div>
-          <div className="text-xs mt-0.5" style={{ color: "#8C97AC" }}>Cockpit des appels d'offres</div>
+          <img src={logoWordmarkDark} alt="AO Manager" className="h-7 w-auto mb-2" />
+          <div className="text-xs" style={{ color: "#8C97AC" }}>Cockpit des appels d'offres</div>
         </div>
         {isMobile && <button onClick={onClose} className="text-white/70 p-1"><X size={18} /></button>}
       </div>

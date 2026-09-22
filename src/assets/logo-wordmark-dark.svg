@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 330 64">
+  <rect width="64" height="64" rx="14" fill="#FF5800"/>
+  <path d="M20 14h17l9 9v27H20z" fill="none" stroke="#fff" stroke-width="4" stroke-linejoin="round"/>
+  <path d="M37 14v10h9" fill="none" stroke="#fff" stroke-width="4" stroke-linejoin="round"/>
+  <path d="M27 32h12M27 39h10" stroke="#fff" stroke-width="4" stroke-linecap="round"/>
+  <circle cx="43" cy="45" r="9" fill="#fff"/>
+  <path d="m39 45 2.5 2.5L47 42" fill="none" stroke="#FF5800" stroke-width="2.8" stroke-linecap="round" stroke-linejoin="round"/>
+  <text x="80" y="40" font-family="Arial, Helvetica, sans-serif" font-size="27" font-weight="700" fill="#fff">
+    <tspan fill="#FF5800">AO</tspan><tspan> Manager</tspan>
+  </text>
+</svg>
