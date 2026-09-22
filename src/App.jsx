@@ -2850,24 +2850,33 @@ function TenderDetail({ tender, updateTender, back, onDelete }) {
         message="L'AO passe en phase de réception des offres — le statut devient « En cours » et l'onglet Fournisseurs s'ouvre pour enregistrer les soumissionnaires au fil de la réception. Les informations de cadrage restent modifiables ensuite si besoin."
         onConfirm={publish} onCancel={() => setConfirmingPublish(false)} />
 
-      <div className="flex gap-1 mb-6 overflow-x-auto items-stretch" style={{ borderBottom: `1px solid ${C.border}` }}>
-        {TABS.map((tb, i) => {
-          const Icon = tb.icon; const active = tab === tb.key; const done = completion[tb.key];
-          const phaseStarts = tb.phase === 2 && TABS[i - 1]?.phase === 1;
+      <div className="mb-6 space-y-4">
+        {[
+          { phase: 1, label: "Construction de l'AO" },
+          { phase: 2, label: "Réception & évaluation" },
+          { phase: 0, label: "Suivi" },
+        ].map(group => {
+          const groupTabs = TABS.filter(tb => tb.phase === group.phase);
+          if (!groupTabs.length) return null;
           return (
-            <React.Fragment key={tb.key}>
-              {phaseStarts && (
-                <div className="flex items-center gap-2 px-2 shrink-0" style={{ color: C.inkSoft }}>
-                  <div className="w-px h-5" style={{ backgroundColor: C.border }} />
-                  <span className="text-[10px] uppercase tracking-wider whitespace-nowrap">Réception & évaluation</span>
-                </div>
-              )}
-              <button onClick={() => setTab(tb.key)} className="flex items-center gap-1.5 px-3 py-2.5 text-sm transition-colors relative shrink-0"
-                style={{ color: active ? C.accentDark : C.inkSoft, borderBottom: active ? `2px solid ${C.accent}` : "2px solid transparent", marginBottom: -1 }}>
-                <Icon size={14} /> {tb.label}
-                {done && <CheckCircle2 size={11} style={{ color: C.green }} />}
-              </button>
-            </React.Fragment>
+            <div key={group.phase}>
+              <div className="text-[11px] font-semibold uppercase tracking-wider mb-2" style={{ color: C.inkSoft }}>{group.label}</div>
+              <div className="flex flex-wrap gap-2">
+                {groupTabs.map(tb => {
+                  const Icon = tb.icon; const active = tab === tb.key; const done = completion[tb.key];
+                  return (
+                    <button key={tb.key} onClick={() => setTab(tb.key)}
+                      className="flex items-center gap-1.5 px-3.5 py-2 rounded-full text-sm font-medium transition-all duration-150 hover:-translate-y-0.5"
+                      style={active
+                        ? { backgroundColor: C.accent, color: "#fff", border: `1px solid ${C.accent}`, boxShadow: `0 2px 8px ${C.accentSoft}` }
+                        : { backgroundColor: C.surface, color: C.inkSoft, border: `1px solid ${C.border}` }}>
+                      <Icon size={14} /> {tb.label}
+                      {done && <CheckCircle2 size={12} style={{ color: active ? "#fff" : C.green }} />}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
           );
         })}
       </div>
