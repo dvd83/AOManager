@@ -5,7 +5,7 @@ import {
   LayoutDashboard, FilePlus2, FileText, ListChecks, Scale, Users,
   ClipboardCheck, BarChart3, FileBarChart2, History, ChevronRight,
   AlertTriangle, CheckCircle2, Sparkles, ArrowLeft, Info,
-  ShieldCheck, Building2, Search, Bell, Circle, Download, Upload, Plus, Trash2, PenLine, Menu, X
+  ShieldCheck, Building2, Search, Bell, Circle, Download, Upload, Plus, Trash2, PenLine, Menu, X, Lock
 } from "lucide-react";
 
 /* =========================================================================
@@ -2858,20 +2858,29 @@ function TenderDetail({ tender, updateTender, back, onDelete }) {
         ].map(group => {
           const groupTabs = TABS.filter(tb => tb.phase === group.phase);
           if (!groupTabs.length) return null;
+          const locked = group.phase === 2 && !published;
           return (
             <div key={group.phase}>
-              <div className="text-[11px] font-semibold uppercase tracking-wider mb-2" style={{ color: C.inkSoft }}>{group.label}</div>
+              <div className="text-[11px] font-semibold uppercase tracking-wider mb-2 flex items-center gap-1.5" style={{ color: C.inkSoft }}>
+                {group.label}{locked && <Lock size={11} />}
+              </div>
               <div className="flex flex-wrap gap-2">
                 {groupTabs.map(tb => {
                   const Icon = tb.icon; const active = tab === tb.key; const done = completion[tb.key];
+                  const tabLocked = locked && !active;
                   return (
-                    <button key={tb.key} onClick={() => setTab(tb.key)}
-                      className="flex items-center gap-1.5 px-3.5 py-2 rounded-full text-sm font-medium transition-all duration-150 hover:-translate-y-0.5"
+                    <button key={tb.key} onClick={() => !tabLocked && setTab(tb.key)} disabled={tabLocked}
+                      title={tabLocked ? "Disponible une fois l'AO publié" : ""}
+                      className="flex items-center gap-1.5 px-3.5 py-2 rounded-full text-sm font-medium transition-all duration-150 disabled:cursor-not-allowed"
                       style={active
                         ? { backgroundColor: C.accent, color: "#fff", border: `1px solid ${C.accent}`, boxShadow: `0 2px 8px ${C.accentSoft}` }
-                        : { backgroundColor: C.surface, color: C.inkSoft, border: `1px solid ${C.border}` }}>
-                      <Icon size={14} /> {tb.label}
-                      {done && <CheckCircle2 size={12} style={{ color: active ? "#fff" : C.green }} />}
+                        : tabLocked
+                        ? { backgroundColor: C.borderSoft, color: C.inkSoft, border: `1px solid ${C.borderSoft}`, opacity: 0.6 }
+                        : { backgroundColor: C.surface, color: C.inkSoft, border: `1px solid ${C.border}` }}
+                      onMouseEnter={e => { if (!tabLocked) e.currentTarget.style.transform = "translateY(-1px)"; }}
+                      onMouseLeave={e => { e.currentTarget.style.transform = ""; }}>
+                      {tabLocked ? <Lock size={12} /> : <Icon size={14} />} {tb.label}
+                      {done && !tabLocked && <CheckCircle2 size={12} style={{ color: active ? "#fff" : C.green }} />}
                     </button>
                   );
                 })}
