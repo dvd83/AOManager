@@ -1372,15 +1372,16 @@ function useIsMobile() {
   return isMobile;
 }
 
-function Sidebar({ view, setView, isMobile, open, onClose, onReset, onLogout, userEmail }) {
+function Sidebar({ view, setView, isMobile, open, onClose, onReset, onLogout, userEmail, isAdmin }) {
   const navItems = [
     { key: "dashboard", label: "Tableau de bord", icon: LayoutDashboard },
     { key: "new", label: "Nouvel appel d'offres", icon: FilePlus2 },
+    ...(isAdmin ? [{ key: "admin", label: "Administration", icon: ShieldCheck }] : []),
   ];
   const soon = [
     { label: "Fournisseurs (registre)", icon: Building2 },
     { label: "Modèles d'AO", icon: ListChecks },
-    { label: "Administration", icon: ShieldCheck },
+    ...(isAdmin ? [] : [{ label: "Administration", icon: ShieldCheck }]),
   ];
   function pick(key) { setView(key); if (isMobile) onClose(); }
 
@@ -2827,6 +2828,77 @@ function LoginScreen({ onLoggedIn }) {
   );
 }
 
+/* --------------------------------- ADMINISTRATION --------------------------------- */
+
+function AdminPanel({ currentUserId }) {
+  const [users, setUsers] = useState(null);
+  const [error, setError] = useState("");
+  const [busyId, setBusyId] = useState(null);
+  const [pendingDeleteUser, setPendingDeleteUser] = useState(null);
+
+  async function load() {
+    setError("");
+    const { data, error } = await supabase.functions.invoke("admin-users", { body: { action: "list" } });
+    if (error) { setError(error.message || "Chargement impossible."); return; }
+    setUsers(data.users || []);
+  }
+  useEffect(() => { load(); }, []);
+
+  async function act(action, userId) {
+    setBusyId(userId); setError("");
+    const { error } = await supabase.functions.invoke("admin-users", { body: { action, userId } });
+    setBusyId(null);
+    if (error) { setError(error.message || "Action impossible."); return; }
+    load();
+  }
+
+  return (
+    <div className="px-4 sm:px-8 py-5 sm:py-7 max-w-4xl">
+      <h1 className="text-xl font-semibold" style={{ color: C.ink }}>Administration</h1>
+      <p className="text-sm mt-1 mb-6" style={{ color: C.inkSoft }}>Gestion des comptes — vous voyez et gérez ici tous les utilisateurs de l'outil.</p>
+
+      {error && <div className="text-sm mb-4 px-4 py-2.5 rounded-lg" style={{ backgroundColor: C.redSoft, color: C.red }}>{error}</div>}
+
+      {users === null ? (
+        <div className="text-sm" style={{ color: C.inkSoft }}>Chargement…</div>
+      ) : (
+        <Card className="ao-stagger">
+          {users.map((u, i) => (
+            <div key={u.id} className="px-5 py-4 flex items-center gap-4" style={{ borderBottom: i < users.length - 1 ? `1px solid ${C.borderSoft}` : "none" }}>
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className="text-sm font-medium truncate" style={{ color: C.ink }}>{u.email}</span>
+                  {u.role === "admin" && <Badge color={C.accentDark} bg={C.accentSoft}>Admin</Badge>}
+                  {u.revoked && <Badge color={C.red} bg={C.redSoft}>Accès révoqué</Badge>}
+                  {u.id === currentUserId && <span className="text-xs" style={{ color: C.inkSoft }}>(vous)</span>}
+                </div>
+                <div className="text-xs mt-1" style={{ color: C.inkSoft }}>{u.tenderCount} appel{u.tenderCount > 1 ? "s" : ""} d'offres</div>
+              </div>
+              {u.id !== currentUserId && (
+                <div className="flex items-center gap-2 shrink-0">
+                  <GhostButton disabled={busyId === u.id} onClick={() => act(u.revoked ? "restore" : "revoke", u.id)}>
+                    {u.revoked ? "Restaurer l'accès" : "Révoquer l'accès"}
+                  </GhostButton>
+                  <button onClick={() => setPendingDeleteUser(u)} disabled={busyId === u.id} title="Supprimer ce compte" className="p-2 rounded-lg transition-colors hover:bg-black/5 disabled:opacity-40" style={{ border: `1px solid ${C.border}` }}>
+                    <Trash2 size={15} style={{ color: C.red }} />
+                  </button>
+                </div>
+              )}
+            </div>
+          ))}
+          {users.length === 0 && <div className="px-5 py-6 text-sm" style={{ color: C.inkSoft }}>Aucun utilisateur.</div>}
+        </Card>
+      )}
+
+      <ConfirmDialog open={!!pendingDeleteUser} danger confirmLabel="Supprimer définitivement"
+        title="Supprimer ce compte ?"
+        message={pendingDeleteUser ? `${pendingDeleteUser.email} et tous ses appels d'offres (${pendingDeleteUser.tenderCount}) seront définitivement supprimés. Cette action est irréversible.` : ""}
+        onConfirm={() => { const u = pendingDeleteUser; setPendingDeleteUser(null); act("delete", u.id); }}
+        onCancel={() => setPendingDeleteUser(null)} />
+    </div>
+  );
+}
+
 export default function App() {
   const [session, setSession] = useState(undefined); // undefined = pas encore vérifié, null = pas connecté
   const [tenders, setTenders] = useState([]);
@@ -2847,14 +2919,31 @@ export default function App() {
     return () => sub.subscription.unsubscribe();
   }, []);
 
-  // Chargement des AO de l'utilisateur connecté (la sécurité par ligne garantit qu'on ne voit que les siens).
+  // Rôle de l'utilisateur connecté (admin voit/gère tous les AO et utilisateurs, sinon uniquement les siens).
+  const [profile, setProfile] = useState(null);
   useEffect(() => {
-    if (!session) { setTenders([]); setLoaded(session === null); return; }
+    if (!session) { setProfile(null); return; }
+    let cancelled = false;
+    supabase.from("profiles").select("role, email").eq("id", session.user.id).single()
+      .then(({ data }) => { if (!cancelled) setProfile(data || { role: "user" }); });
+    return () => { cancelled = true; };
+  }, [session]);
+  const isAdmin = profile?.role === "admin";
+
+  // Chargement des AO : la sécurité par ligne garantit qu'un utilisateur ne voit que les siens,
+  // et qu'un admin voit ceux de tout le monde. On garde le propriétaire de côté (jamais dans
+  // les objets AO eux-mêmes) pour ne jamais réinitialiser/supprimer par erreur les AO d'autrui.
+  const [ownerByTenderId, setOwnerByTenderId] = useState({});
+  useEffect(() => {
+    if (!session) { setTenders([]); setOwnerByTenderId({}); setLoaded(session === null); return; }
     let cancelled = false;
     (async () => {
-      const { data, error } = await supabase.from("tenders").select("id, data").order("created_at", { ascending: true });
+      const { data, error } = await supabase.from("tenders").select("id, data, user_id").order("created_at", { ascending: true });
       if (!cancelled) {
-        if (!error && data) setTenders(data.map(row => ({ ...row.data, id: row.id })));
+        if (!error && data) {
+          setTenders(data.map(row => ({ ...row.data, id: row.id })));
+          setOwnerByTenderId(Object.fromEntries(data.map(row => [row.id, row.user_id])));
+        }
         setLoaded(true);
       }
     })();
@@ -2900,10 +2989,13 @@ export default function App() {
   function resetDemoData() { setConfirmingReset(true); }
   async function confirmResetDemoData() {
     setView("dashboard"); setSelectedId(null); setConfirmingReset(false);
-    const oldIds = tenders.map(t => t.id);
+    // Ne touche qu'aux AO de l'utilisateur courant, même si (admin) tenders contient ceux de tout le monde.
+    const ownIds = tenders.filter(t => ownerByTenderId[t.id] === session.user.id).map(t => t.id);
+    const others = tenders.filter(t => ownerByTenderId[t.id] !== session.user.id);
     const fresh = INITIAL_TENDERS.map(t => ({ ...t, id: crypto.randomUUID() }));
-    setTenders(fresh);
-    if (oldIds.length) await supabase.from("tenders").delete().in("id", oldIds);
+    setTenders([...others, ...fresh]);
+    setOwnerByTenderId(prev => ({ ...prev, ...Object.fromEntries(fresh.map(t => [t.id, session.user.id])) }));
+    if (ownIds.length) await supabase.from("tenders").delete().in("id", ownIds);
     await supabase.from("tenders").insert(fresh.map(t => ({ id: t.id, user_id: session.user.id, reference: t.reference, title: t.title, data: t })));
   }
   const selected = tenders.find(t => t.id === selectedId);
@@ -2920,14 +3012,15 @@ export default function App() {
 
   return (
     <div className="flex min-h-screen" style={{ backgroundColor: C.bg, fontFamily: "Inter, ui-sans-serif, system-ui, -apple-system, sans-serif" }}>
-      <Sidebar view={view === "detail" ? "" : view} setView={v => { setView(v); setSelectedId(null); }} isMobile={isMobile} open={drawerOpen} onClose={() => setDrawerOpen(false)} onReset={resetDemoData} onLogout={() => supabase.auth.signOut()} userEmail={session.user.email} />
+      <Sidebar view={view === "detail" ? "" : view} setView={v => { setView(v); setSelectedId(null); }} isMobile={isMobile} open={drawerOpen} onClose={() => setDrawerOpen(false)} onReset={resetDemoData} onLogout={() => supabase.auth.signOut()} userEmail={session.user.email} isAdmin={isAdmin} />
       <div className="flex-1 min-w-0">
-        <TopBar isMobile={isMobile} onMenuClick={() => setDrawerOpen(true)} crumbs={view === "dashboard" ? ["Tableau de bord"] : view === "new" ? ["Tableau de bord", "Nouvel appel d'offres"] : ["Tableau de bord", selected?.reference || ""]} />
+        <TopBar isMobile={isMobile} onMenuClick={() => setDrawerOpen(true)} crumbs={view === "dashboard" ? ["Tableau de bord"] : view === "new" ? ["Tableau de bord", "Nouvel appel d'offres"] : view === "admin" ? ["Administration"] : ["Tableau de bord", selected?.reference || ""]} />
         {saveError && <div className="text-xs text-center py-1.5" style={{ backgroundColor: C.redSoft, color: C.red }}>La sauvegarde automatique a échoué pour la dernière modification — vos données restent visibles ici, mais pourraient ne pas persister après fermeture.</div>}
         <div key={view === "detail" ? `detail-${selectedId}` : view} className="ao-view-enter">
           {view === "dashboard" && <Dashboard tenders={tenders} openTender={openTender} goNew={() => setView("new")} onDelete={deleteTender} />}
           {view === "new" && <NewTenderWizard onCreate={createTender} onCancel={() => setView("dashboard")} />}
           {view === "detail" && selected && <TenderDetail tender={selected} updateTender={updateTender} back={() => setView("dashboard")} onDelete={deleteTender} />}
+          {view === "admin" && isAdmin && <AdminPanel currentUserId={session.user.id} />}
         </div>
       </div>
       <ConfirmDialog open={!!pendingDelete} danger confirmLabel="Supprimer"
