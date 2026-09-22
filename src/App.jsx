@@ -1271,9 +1271,9 @@ function Badge({ children, color, bg }) {
   return <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium" style={{ color, backgroundColor: bg }}>{children}</span>;
 }
 function StatusBadge({ status }) { const m = STATUS_META[status] || STATUS_META.draft; return <Badge color={m.color} bg={m.bg}>{m.label}</Badge>; }
-function ProgressBar({ value }) {
-  return <div className="w-full h-1.5 rounded-full" style={{ backgroundColor: C.borderSoft }}>
-    <div className="h-1.5 rounded-full" style={{ width: `${value}%`, backgroundColor: value >= 80 ? C.green : value >= 40 ? C.accent : C.amber }} />
+function ProgressBar({ value, dark }) {
+  return <div className="w-full h-1.5 rounded-full transition-all" style={{ backgroundColor: dark ? "rgba(255,255,255,0.14)" : C.borderSoft }}>
+    <div className="h-1.5 rounded-full transition-all duration-500" style={{ width: `${value}%`, backgroundColor: value >= 80 ? C.green : value >= 40 ? C.accent : C.amber }} />
   </div>;
 }
 function Card({ children, className = "", style = {} }) {
@@ -2800,29 +2800,48 @@ function TenderDetail({ tender, updateTender, back, onDelete }) {
     setTab("suppliers");
   }
 
+  const StatusIcon = STATUS_ICON[tender.status] || Circle;
+  const darkGhostBtn = "flex items-center gap-2 px-3.5 py-2 rounded-lg text-sm font-medium transition-colors text-white hover:bg-white/10";
+  const darkGhostStyle = { border: "1px solid rgba(255,255,255,0.18)", backgroundColor: "rgba(255,255,255,0.06)" };
+
   return (
     <div className="px-4 sm:px-8 py-5 sm:py-7 max-w-6xl">
       <button onClick={back} className="flex items-center gap-1.5 text-sm mb-5 transition-colors hover:opacity-70" style={{ color: C.inkSoft }}><ArrowLeft size={14} /> Retour au tableau de bord</button>
-      <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-3 mb-2">
-        <div>
-          <div className="flex items-center gap-2"><span className="text-xs font-mono" style={{ color: C.inkSoft }}>{tender.reference}</span><StatusBadge status={tender.status} /></div>
-          <h1 className="text-xl font-semibold mt-1" style={{ color: C.ink }}>{tender.title}</h1>
-        </div>
-        <div className="flex items-center gap-2">
-          {!published && (
-            <button onClick={() => setConfirmingPublish(true)} disabled={!ready} title={ready ? "" : "Complétez la checklist de préparation (100%) avant de publier"}
-              className="flex items-center gap-2 px-3.5 py-2 rounded-lg text-sm font-semibold text-white disabled:opacity-40 transition-transform active:scale-[0.98]" style={{ backgroundColor: C.green }}>
-              <CheckCircle2 size={14} /> Publier l'AO
-            </button>
-          )}
-          <GhostButton icon={Download} onClick={exportAllDocuments}>Exporter le dossier</GhostButton>
-          <button onClick={() => setShowCheck(s => !s)} className="flex items-center gap-2 px-3.5 py-2 rounded-lg text-sm font-medium transition-colors" style={{ border: `1px solid ${C.accent}`, color: C.accentDark, backgroundColor: showCheck ? C.accentSoft : "transparent" }}><ShieldCheck size={14} /> {showCheck ? "Masquer le détail" : "Détail de préparation"}</button>
-          <button onClick={() => onDelete(tender)} title="Supprimer cet AO" className="p-2 rounded-lg transition-colors hover:bg-black/5" style={{ border: `1px solid ${C.border}` }}>
-            <Trash2 size={15} style={{ color: C.red }} />
-          </button>
+
+      <div className="rounded-2xl px-6 sm:px-8 py-6 sm:py-7 mb-6 relative overflow-hidden ao-scale-in" style={{ background: `linear-gradient(135deg, ${C.ink}, #263454)` }}>
+        <div className="absolute -right-10 -top-16 w-56 h-56 rounded-full opacity-20" style={{ background: `radial-gradient(circle, ${C.accent}, transparent 70%)` }} />
+        <div className="relative">
+          <div className="flex flex-col lg:flex-row lg:items-start justify-between gap-5">
+            <div className="min-w-0">
+              <div className="flex items-center gap-2 flex-wrap">
+                <span className="text-xs font-mono" style={{ color: "#8C97AC" }}>{tender.reference}</span>
+                <StatusBadge status={tender.status} />
+              </div>
+              <h1 className="text-2xl font-semibold text-white mt-1.5 flex items-center gap-2.5">
+                <StatusIcon size={20} style={{ color: "#8C97AC" }} className="shrink-0" />
+                <span className="truncate">{tender.title}</span>
+              </h1>
+              <div className="flex items-center gap-3 mt-4 max-w-xs">
+                <div className="flex-1"><ProgressBar value={progress} dark /></div>
+                <span className="text-sm font-medium tabular-nums shrink-0" style={{ color: "#B7C0D1" }}>{progress}%</span>
+              </div>
+            </div>
+            <div className="flex items-center gap-2 flex-wrap shrink-0">
+              {!published && (
+                <button onClick={() => setConfirmingPublish(true)} disabled={!ready} title={ready ? "" : "Complétez la checklist de préparation (100%) avant de publier"}
+                  className="flex items-center gap-2 px-3.5 py-2 rounded-lg text-sm font-semibold text-white disabled:opacity-40 transition-transform active:scale-[0.98] hover:brightness-110" style={{ backgroundColor: C.green }}>
+                  <CheckCircle2 size={14} /> Publier l'AO
+                </button>
+              )}
+              <button onClick={exportAllDocuments} className={darkGhostBtn} style={darkGhostStyle}><Download size={14} /> Exporter le dossier</button>
+              <button onClick={() => setShowCheck(s => !s)} className={darkGhostBtn} style={showCheck ? { backgroundColor: C.accent, border: `1px solid ${C.accent}` } : darkGhostStyle}><ShieldCheck size={14} /> {showCheck ? "Masquer le détail" : "Détail de préparation"}</button>
+              <button onClick={() => onDelete(tender)} title="Supprimer cet AO" className="p-2 rounded-lg transition-colors hover:bg-white/10" style={darkGhostStyle}>
+                <Trash2 size={15} color="#fff" />
+              </button>
+            </div>
+          </div>
         </div>
       </div>
-      <div className="w-72 mt-3 mb-5"><ProgressBar value={progress} /></div>
 
       <GuidanceBanner tender={tender} onJump={setTab} />
       {showCheck && <QualityCheck t={tender} />}
