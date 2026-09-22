@@ -38,7 +38,7 @@ Deno.serve(async (req: Request) => {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   }
-  const maxTokens = Math.min(Math.max(Number(body.maxTokens) || 1000, 1), 4096);
+  const maxTokens = Math.min(Math.max(Number(body.maxTokens) || 1000, 1), 8192);
 
   const anthropicRes = await fetch("https://api.anthropic.com/v1/messages", {
     method: "POST",

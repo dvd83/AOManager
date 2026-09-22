@@ -1210,7 +1210,14 @@ function extractJSON(text) {
 
 async function callClaudeJSON(prompt, maxTokens = 1500) {
   const text = await callAssist(prompt, maxTokens);
-  return extractJSON(text);
+  try {
+    return extractJSON(text);
+  } catch (e) {
+    if (!/[}\]]\s*$/.test(text.trim())) {
+      throw new Error("La réponse de l'assistant a été coupée (trop longue). Réessayez, ou réduisez la portée de la demande.");
+    }
+    throw e;
+  }
 }
 
 // Variante texte libre — pour les questions ouvertes ("quels sont les critères habituels pour ce type de besoin ?").
@@ -1901,7 +1908,7 @@ function TextDocEditor({ doc, tender, updateTender, onSave, onGenerate }) {
         `RÈGLE ABSOLUE : n'invente STRICTEMENT AUCUNE information factuelle — aucun type de procédure, aucune base légale, aucune date, aucun délai, aucun canal de dépôt, aucun critère d'adjudication, aucune pondération, aucune condition de recevabilité, aucun document obligatoire, aucune règle Achats. ` +
         `Si une information nécessaire à une section n'est pas explicitement présente dans le contexte fourni ci-dessous, écris exactement "[À COMPLÉTER PAR ACHATS]" (information manquante) ou "[À VALIDER PAR ACHATS]" (information qui nécessite une décision/validation, ex. type de procédure, base légale) au lieu de la deviner ou de la généraliser. Ne remplace jamais un de ces deux placeholders déjà présents dans le contexte par une supposition. ` +
         `Réponds UNIQUEMENT avec un objet JSON valide, sans balises markdown et sans aucun texte avant ou après l'accolade ouvrante/fermante, dont les clés sont exactement celles listées ci-dessous et les valeurs sont le texte rédigé (string, quelques phrases maximum par section) :\n${sectionList}\n\nContexte de l'AO :\n${context}`;
-      const drafted = await callClaudeJSON(prompt, 2000);
+      const drafted = await callClaudeJSON(prompt, 6000);
       onSave({ sections: { ...values, ...drafted } });
     } catch (e) {
       setDraftError(`La rédaction automatique a échoué (${e.message || "erreur inconnue"}). Vous pouvez compléter les sections manuellement, ou réessayer.`);
