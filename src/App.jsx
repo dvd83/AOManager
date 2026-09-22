@@ -1352,7 +1352,9 @@ function greetingName(email) {
 }
 
 function Dashboard({ tenders, openTender, goNew, onDelete, userEmail, isAdmin }) {
+  const [statusFilter, setStatusFilter] = useState(null);
   const counts = {}; Object.keys(STATUS_META).forEach(k => counts[k] = tenders.filter(t => t.status === k).length);
+  const visibleTenders = statusFilter ? tenders.filter(t => t.status === statusFilter) : tenders;
   const actions = [];
   tenders.forEach(t => {
     const missing = missingMandatoryDocs(t);
@@ -1381,21 +1383,27 @@ function Dashboard({ tenders, openTender, goNew, onDelete, userEmail, isAdmin })
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 mb-8 ao-stagger">
         {Object.entries(STATUS_META).map(([key, meta]) => {
           const Icon = STATUS_ICON[key] || Circle;
+          const active = statusFilter === key;
           return (
-            <Card key={key} className="p-4 hover:shadow-md hover:-translate-y-0.5 transition-all cursor-default">
-              <div className="w-8 h-8 rounded-lg flex items-center justify-center mb-2.5" style={{ backgroundColor: meta.bg }}>
-                <Icon size={15} style={{ color: meta.color }} />
-              </div>
-              <div className="text-2xl font-semibold tabular-nums" style={{ color: C.ink }}>{counts[key]}</div>
-              <div className="text-xs mt-0.5" style={{ color: meta.color }}>{meta.label}</div>
-            </Card>
+            <button key={key} onClick={() => setStatusFilter(f => f === key ? null : key)} className="text-left">
+              <Card className="p-4 hover:shadow-md hover:-translate-y-0.5 transition-all cursor-pointer" style={active ? { border: `1.5px solid ${meta.color}`, boxShadow: `0 0 0 3px ${meta.bg}` } : {}}>
+                <div className="w-8 h-8 rounded-lg flex items-center justify-center mb-2.5" style={{ backgroundColor: meta.bg }}>
+                  <Icon size={15} style={{ color: meta.color }} />
+                </div>
+                <div className="text-2xl font-semibold tabular-nums" style={{ color: C.ink }}>{counts[key]}</div>
+                <div className="text-xs mt-0.5" style={{ color: meta.color }}>{meta.label}</div>
+              </Card>
+            </button>
           );
         })}
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <div className="col-span-2">
-          <SectionTitle>Mes appels d'offres</SectionTitle>
+          <div className="flex items-center justify-between gap-3 mb-4">
+            <h2 className="text-[15px] font-semibold" style={{ color: C.ink }}>{statusFilter ? `AO — ${STATUS_META[statusFilter].label}` : "Mes appels d'offres"}</h2>
+            {statusFilter && <button onClick={() => setStatusFilter(null)} className="text-xs font-medium flex items-center gap-1 shrink-0" style={{ color: C.accentDark }}><X size={12} /> Effacer le filtre</button>}
+          </div>
           {tenders.length === 0 ? (
             <Card className="px-6 py-14 flex flex-col items-center text-center ao-scale-in">
               <div className="w-12 h-12 rounded-full flex items-center justify-center mb-4" style={{ backgroundColor: C.accentSoft }}>
@@ -1405,14 +1413,16 @@ function Dashboard({ tenders, openTender, goNew, onDelete, userEmail, isAdmin })
               <p className="text-sm mt-1.5 max-w-sm" style={{ color: C.inkSoft }}>Créez votre premier AO — l'assistant vous guide pas à pas, de la définition du besoin jusqu'à la synthèse finale.</p>
               <div className="mt-5"><PrimaryButton onClick={goNew} icon={FilePlus2}>Créer mon premier AO</PrimaryButton></div>
             </Card>
+          ) : visibleTenders.length === 0 ? (
+            <Card className="px-6 py-10 text-center text-sm ao-scale-in" style={{ color: C.inkSoft }}>Aucun AO avec ce statut.</Card>
           ) : (
             <Card className="ao-stagger">
-              {tenders.map((t, i) => {
+              {visibleTenders.map((t, i) => {
                 const progress = computeProgress(t);
                 return (
                   <div key={t.id} role="button" tabIndex={0} onClick={() => openTender(t.id)} onKeyDown={e => e.key === "Enter" && openTender(t.id)}
                     className="w-full text-left px-5 py-4 flex items-center gap-4 transition-colors hover:bg-black/[0.02] cursor-pointer group"
-                    style={{ borderBottom: i < tenders.length - 1 ? `1px solid ${C.borderSoft}` : "none" }}>
+                    style={{ borderBottom: i < visibleTenders.length - 1 ? `1px solid ${C.borderSoft}` : "none" }}>
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2">
                         <span className="text-xs font-mono" style={{ color: C.inkSoft }}>{t.reference}</span>
