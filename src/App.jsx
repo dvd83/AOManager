@@ -1178,11 +1178,39 @@ async function callAssist(prompt, maxTokens = 1500) {
   return data.text;
 }
 
+// Extrait le premier objet/tableau JSON valide et équilibré d'un texte, en ignorant les
+// crochets isolés qui peuvent apparaître dans du texte libre autour (ex. placeholders du type
+// "[À COMPLÉTER PAR ACHATS]"). Une simple regex gourmande s'accroche sur ces faux positifs.
+function extractJSON(text) {
+  for (let i = 0; i < text.length; i++) {
+    const open = text[i];
+    if (open !== "{" && open !== "[") continue;
+    const close = open === "{" ? "}" : "]";
+    let depth = 0, inStr = false, escape = false;
+    for (let j = i; j < text.length; j++) {
+      const c = text[j];
+      if (inStr) {
+        if (escape) escape = false;
+        else if (c === "\\") escape = true;
+        else if (c === '"') inStr = false;
+        continue;
+      }
+      if (c === '"') { inStr = true; continue; }
+      if (c === open) depth++;
+      else if (c === close) {
+        depth--;
+        if (depth === 0) {
+          try { return JSON.parse(text.slice(i, j + 1)); } catch { break; }
+        }
+      }
+    }
+  }
+  throw new Error("Réponse de l'assistant illisible.");
+}
+
 async function callClaudeJSON(prompt, maxTokens = 1500) {
   const text = await callAssist(prompt, maxTokens);
-  const match = text.match(/\{[\s\S]*\}|\[[\s\S]*\]/);
-  if (!match) throw new Error("Réponse de l'assistant illisible.");
-  return JSON.parse(match[0]);
+  return extractJSON(text);
 }
 
 // Variante texte libre — pour les questions ouvertes ("quels sont les critères habituels pour ce type de besoin ?").
