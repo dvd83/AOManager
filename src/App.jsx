@@ -420,6 +420,21 @@ function tabCompletion(t) {
   };
 }
 
+// Checklist de préparation avant publication (phase 1 uniquement) — les soumissionnaires
+// (phase 2, après réception des offres) n'en font pas partie, ils ne sont pas encore connus.
+function readinessChecks(t) {
+  const checks = [
+    { label: "Besoin défini", ok: !!t.need.context }, { label: "Périmètre défini", ok: t.scope.included.length > 0 },
+    { label: "Exigences définies", ok: t.requirements.length > 0 }, { label: "Critères définis", ok: t.criteria.length > 0 },
+    { label: "Pondération = 100%", ok: t.criteria.length > 0 && weightSum(t) === 100 },
+    { label: "Documents obligatoires prêts", ok: missingMandatoryDocs(t).length === 0 },
+  ];
+  const pct = Math.round((checks.filter(c => c.ok).length / checks.length) * 100);
+  return { checks, pct, ready: pct === 100 };
+}
+
+const PUBLISHED_STATUSES = ["ongoing", "evaluation", "completed"];
+
 // Détermine la prochaine action prioritaire pour guider le chef de projet.
 function nextStepFor(t) {
   if (!t.need.context) return { tab: "need", icon: ListChecks, text: "Décrivez le besoin de cet AO pour démarrer.", cta: "Renseigner le besoin" };
@@ -430,7 +445,10 @@ function nextStepFor(t) {
   if (missingMandatoryDocs(t).length > 0) return { tab: "documents", icon: FileText, text: `${missingMandatoryDocs(t).length} document(s) obligatoire(s) à finaliser avant publication.`, cta: "Compléter les documents" };
   // Phase 1 (construction) terminée : les soumissionnaires ne sont pas encore connus, ce n'est
   // pas une tâche en attente mais le passage naturel à la phase 2, une fois l'AO publié.
-  if (t.suppliers.length === 0) return { tab: "suppliers", icon: CheckCircle2, text: "AO prêt à être publié. Une fois les offres reçues, enregistrez les soumissionnaires ici pour démarrer l'évaluation.", cta: "Publier / passer à la réception", done: true };
+  if (t.suppliers.length === 0) {
+    if (!PUBLISHED_STATUSES.includes(t.status)) return { tab: "info", icon: CheckCircle2, text: "AO prêt à être publié — utilisez le bouton « Publier l'AO » en haut de page.", cta: "Voir le récapitulatif", done: true };
+    return { tab: "suppliers", icon: Users, text: "AO publié — enregistrez ici les soumissionnaires au fil de la réception des offres.", cta: "Enregistrer un soumissionnaire", done: true };
+  }
   const notFullyEvaluated = t.suppliers.some(s => Object.keys(s.evaluations || {}).length < t.criteria.filter(c => c.name !== "Prix").length);
   if (notFullyEvaluated) return { tab: "evaluation", icon: BarChart3, text: "Certains fournisseurs n'ont pas encore été notés sur tous les critères.", cta: "Poursuivre l'évaluation" };
   return { tab: "synthesis", icon: FileBarChart2, text: "L'AO est prêt : consultez la synthèse et exportez le dossier.", cta: "Voir la synthèse", done: true };
@@ -2701,18 +2719,8 @@ function ConfirmDialog({ open, title, message, confirmLabel = "Confirmer", dange
   );
 }
 
-// Checklist de préparation avant publication (phase 1 uniquement) : on ne connaît pas encore
-// les soumissionnaires à ce stade, donc leur enregistrement (phase 2, après réception des
-// offres) n'a pas sa place ici.
 function QualityCheck({ t }) {
-  const checks = [
-    { label: "Besoin défini", ok: !!t.need.context }, { label: "Périmètre défini", ok: t.scope.included.length > 0 },
-    { label: "Exigences définies", ok: t.requirements.length > 0 }, { label: "Critères définis", ok: t.criteria.length > 0 },
-    { label: "Pondération = 100%", ok: t.criteria.length > 0 && weightSum(t) === 100 },
-    { label: "Documents obligatoires prêts", ok: missingMandatoryDocs(t).length === 0 },
-  ];
-  const okCount = checks.filter(c => c.ok).length;
-  const pct = Math.round((okCount / checks.length) * 100);
+  const { checks, pct } = readinessChecks(t);
   return (
     <Card className="p-5 mb-6">
       <div className="flex items-center justify-between mb-3"><div className="text-sm font-semibold" style={{ color: C.ink }}>AO prêt à être publié à {pct}%</div></div>
@@ -2747,10 +2755,21 @@ function GuidanceBanner({ tender, onJump }) {
 function TenderDetail({ tender, updateTender, back, onDelete }) {
   const [tab, setTab] = useState("info");
   const [showCheck, setShowCheck] = useState(false);
+  const [confirmingPublish, setConfirmingPublish] = useState(false);
   const progress = computeProgress(tender);
   const completion = tabCompletion(tender);
+  const { ready } = readinessChecks(tender);
+  const published = PUBLISHED_STATUSES.includes(tender.status);
 
   function exportAllDocuments() { tender.documents.forEach((doc, i) => setTimeout(() => generateDocumentFile(tender, doc), i * 450)); }
+  function publish() {
+    updateTender(prev => ({
+      ...prev, status: "ongoing",
+      history: [...prev.history, { date: new Date().toISOString().slice(0, 16).replace("T", " "), user: "Vous", action: "AO publié — passage à la réception des offres" }],
+    }));
+    setConfirmingPublish(false);
+    setTab("suppliers");
+  }
 
   return (
     <div className="px-4 sm:px-8 py-5 sm:py-7 max-w-6xl">
@@ -2761,6 +2780,12 @@ function TenderDetail({ tender, updateTender, back, onDelete }) {
           <h1 className="text-xl font-semibold mt-1" style={{ color: C.ink }}>{tender.title}</h1>
         </div>
         <div className="flex items-center gap-2">
+          {!published && (
+            <button onClick={() => setConfirmingPublish(true)} disabled={!ready} title={ready ? "" : "Complétez la checklist de préparation (100%) avant de publier"}
+              className="flex items-center gap-2 px-3.5 py-2 rounded-lg text-sm font-semibold text-white disabled:opacity-40 transition-transform active:scale-[0.98]" style={{ backgroundColor: C.green }}>
+              <CheckCircle2 size={14} /> Publier l'AO
+            </button>
+          )}
           <GhostButton icon={Download} onClick={exportAllDocuments}>Exporter le dossier</GhostButton>
           <button onClick={() => setShowCheck(s => !s)} className="flex items-center gap-2 px-3.5 py-2 rounded-lg text-sm font-medium transition-colors" style={{ border: `1px solid ${C.accent}`, color: C.accentDark, backgroundColor: showCheck ? C.accentSoft : "transparent" }}><ShieldCheck size={14} /> {showCheck ? "Masquer le détail" : "Détail de préparation"}</button>
           <button onClick={() => onDelete(tender)} title="Supprimer cet AO" className="p-2 rounded-lg transition-colors hover:bg-black/5" style={{ border: `1px solid ${C.border}` }}>
@@ -2772,6 +2797,10 @@ function TenderDetail({ tender, updateTender, back, onDelete }) {
 
       <GuidanceBanner tender={tender} onJump={setTab} />
       {showCheck && <QualityCheck t={tender} />}
+      <ConfirmDialog open={confirmingPublish} confirmLabel="Publier l'AO"
+        title="Publier cet appel d'offres ?"
+        message="L'AO passe en phase de réception des offres — le statut devient « En cours » et l'onglet Fournisseurs s'ouvre pour enregistrer les soumissionnaires au fil de la réception. Les informations de cadrage restent modifiables ensuite si besoin."
+        onConfirm={publish} onCancel={() => setConfirmingPublish(false)} />
 
       <div className="flex gap-1 mb-6 overflow-x-auto items-stretch" style={{ borderBottom: `1px solid ${C.border}` }}>
         {TABS.map((tb, i) => {
