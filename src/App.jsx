@@ -1166,46 +1166,30 @@ function slug(s) { return s.toLowerCase().normalize("NFD").replace(/[\u0300-\u03
 /* --------------------------- ASSISTANT IA (aide à la rédaction) --------------------------- */
 // Fonction centrale utilisée par tous les boutons "Aide IA" de l'app.
 // Renvoie l'objet JSON demandé dans le prompt, ou lève une erreur explicite.
-async function callClaudeJSON(prompt, maxTokens = 1500) {
-  let res;
-  try {
-    res = await fetch("https://api.anthropic.com/v1/messages", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ model: "claude-sonnet-4-6", max_tokens: maxTokens, messages: [{ role: "user", content: prompt }] }),
-    });
-  } catch (networkErr) {
-    throw new Error("Connexion à l'assistant impossible depuis cet aperçu. Réessayez, ou complétez manuellement.");
+// Appelle la fonction Supabase Edge "ai-assist", qui relaie vers l'API Anthropic
+// côté serveur (la clé API n'est jamais exposée au navigateur).
+async function callAssist(prompt, maxTokens = 1500) {
+  const { data, error } = await supabase.functions.invoke("ai-assist", { body: { prompt, maxTokens } });
+  if (error) {
+    const serverMessage = error.context?.body ? await error.context.json?.().catch(() => null) : null;
+    throw new Error(serverMessage?.error || error.message || "Connexion à l'assistant impossible. Réessayez, ou complétez manuellement.");
   }
-  let data;
-  try { data = await res.json(); } catch { throw new Error(`Réponse illisible du serveur (code ${res.status}).`); }
-  if (!res.ok) throw new Error(data?.error?.message || `Erreur API (${res.status}).`);
-  const text = (data.content || []).filter(b => b.type === "text").map(b => b.text).join("\n");
+  if (!data?.text) throw new Error("Réponse vide de l'assistant.");
+  return data.text;
+}
+
+async function callClaudeJSON(prompt, maxTokens = 1500) {
+  const text = await callAssist(prompt, maxTokens);
   const match = text.match(/\{[\s\S]*\}|\[[\s\S]*\]/);
   if (!match) throw new Error("Réponse de l'assistant illisible.");
   return JSON.parse(match[0]);
 }
 
 // Variante texte libre — pour les questions ouvertes ("quels sont les critères habituels pour ce type de besoin ?").
-// Utilise les connaissances générales du modèle : pas de recherche web en direct depuis le navigateur (bloquée par CORS
-// pour des sites tiers), donc pas de "scraping" réel — c'est un raisonnement basé sur ce que le modèle sait du marché.
+// Utilise les connaissances générales du modèle : pas de recherche web en direct, donc pas de "scraping" réel —
+// c'est un raisonnement basé sur ce que le modèle sait du marché.
 async function callClaudeText(prompt, maxTokens = 800) {
-  let res;
-  try {
-    res = await fetch("https://api.anthropic.com/v1/messages", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ model: "claude-sonnet-4-6", max_tokens: maxTokens, messages: [{ role: "user", content: prompt }] }),
-    });
-  } catch (networkErr) {
-    throw new Error("Connexion à l'assistant impossible depuis cet aperçu. Réessayez plus tard.");
-  }
-  let data;
-  try { data = await res.json(); } catch { throw new Error(`Réponse illisible du serveur (code ${res.status}).`); }
-  if (!res.ok) throw new Error(data?.error?.message || `Erreur API (${res.status}).`);
-  const text = (data.content || []).filter(b => b.type === "text").map(b => b.text).join("\n").trim();
-  if (!text) throw new Error("Réponse vide de l'assistant.");
-  return text;
+  return (await callAssist(prompt, maxTokens)).trim();
 }
 
 /* --------------------------------- COMPOSANTS UI GÉNÉRIQUES --------------------------------- */
@@ -1370,7 +1354,7 @@ function Sidebar({ view, setView, isMobile, open, onClose, onReset, onLogout, us
       <div className="px-5 pt-6 pb-5 flex items-start justify-between" style={{ borderBottom: "1px solid rgba(255,255,255,0.08)" }}>
         <div>
           <div className="flex items-center gap-2 mb-2">
-            <div className="w-7 h-7 rounded-md flex items-center justify-center text-xs font-bold text-white" style={{ backgroundColor: C.accent }}>AO</div>
+            <div className="w-7 h-7 rounded-md flex items-center justify-center text-xs font-bold text-white" style={{ background: `linear-gradient(135deg, ${C.accent}, ${C.accentDark})` }}>AO</div>
           </div>
           <div className="text-[13px] tracking-wide font-semibold text-white">AO Manager</div>
           <div className="text-xs mt-0.5" style={{ color: "#8C97AC" }}>Cockpit des appels d'offres</div>
@@ -1381,8 +1365,8 @@ function Sidebar({ view, setView, isMobile, open, onClose, onReset, onLogout, us
         {navItems.map(it => {
           const Icon = it.icon; const active = view === it.key;
           return <button key={it.key} onClick={() => pick(it.key)}
-            className="w-full flex items-center gap-2.5 px-3 py-2.5 rounded text-sm text-left transition-colors"
-            style={{ backgroundColor: active ? "rgba(255,255,255,0.08)" : "transparent", color: active ? "#FFFFFF" : "#B7C0D1" }}>
+            className="w-full flex items-center gap-2.5 px-3 py-2.5 rounded text-sm text-left transition-all duration-150 hover:bg-white/[0.06]"
+            style={{ backgroundColor: active ? "rgba(255,255,255,0.1)" : "transparent", color: active ? "#FFFFFF" : "#B7C0D1", boxShadow: active ? "inset 2px 0 0 0 " + C.accent : "none" }}>
             <Icon size={16} strokeWidth={2} />{it.label}
           </button>;
         })}
@@ -1458,10 +1442,10 @@ function Dashboard({ tenders, openTender, goNew, onDelete }) {
         <PrimaryButton onClick={goNew} icon={FilePlus2}>Nouvel appel d'offres</PrimaryButton>
       </div>
 
-      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 mb-8">
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 mb-8 ao-stagger">
         {Object.entries(STATUS_META).map(([key, meta]) => (
-          <Card key={key} className="p-4 hover:shadow-md" style={{ borderTop: `2px solid ${meta.color}` }}>
-            <div className="text-2xl font-semibold" style={{ color: C.ink }}>{counts[key]}</div>
+          <Card key={key} className="p-4 hover:shadow-md hover:-translate-y-0.5 transition-all cursor-default" style={{ borderTop: `2px solid ${meta.color}` }}>
+            <div className="text-2xl font-semibold tabular-nums" style={{ color: C.ink }}>{counts[key]}</div>
             <div className="text-xs mt-1" style={{ color: meta.color }}>{meta.label}</div>
           </Card>
         ))}
@@ -1470,37 +1454,53 @@ function Dashboard({ tenders, openTender, goNew, onDelete }) {
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <div className="col-span-2">
           <SectionTitle>Mes appels d'offres</SectionTitle>
-          <Card>
-            {tenders.map((t, i) => {
-              const progress = computeProgress(t);
-              return (
-                <div key={t.id} role="button" tabIndex={0} onClick={() => openTender(t.id)} onKeyDown={e => e.key === "Enter" && openTender(t.id)}
-                  className="w-full text-left px-5 py-4 flex items-center gap-4 transition-colors hover:bg-black/[0.015] cursor-pointer"
-                  style={{ borderBottom: i < tenders.length - 1 ? `1px solid ${C.borderSoft}` : "none" }}>
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2">
-                      <span className="text-xs font-mono" style={{ color: C.inkSoft }}>{t.reference}</span>
-                      <StatusBadge status={t.status} />
+          {tenders.length === 0 ? (
+            <Card className="px-6 py-14 flex flex-col items-center text-center ao-scale-in">
+              <div className="w-12 h-12 rounded-full flex items-center justify-center mb-4" style={{ backgroundColor: C.accentSoft }}>
+                <FilePlus2 size={20} style={{ color: C.accentDark }} />
+              </div>
+              <div className="text-sm font-semibold" style={{ color: C.ink }}>Aucun appel d'offres pour l'instant</div>
+              <p className="text-sm mt-1.5 max-w-sm" style={{ color: C.inkSoft }}>Créez votre premier AO — l'assistant vous guide pas à pas, de la définition du besoin jusqu'à la synthèse finale.</p>
+              <div className="mt-5"><PrimaryButton onClick={goNew} icon={FilePlus2}>Créer mon premier AO</PrimaryButton></div>
+            </Card>
+          ) : (
+            <Card className="ao-stagger">
+              {tenders.map((t, i) => {
+                const progress = computeProgress(t);
+                return (
+                  <div key={t.id} role="button" tabIndex={0} onClick={() => openTender(t.id)} onKeyDown={e => e.key === "Enter" && openTender(t.id)}
+                    className="w-full text-left px-5 py-4 flex items-center gap-4 transition-colors hover:bg-black/[0.02] cursor-pointer group"
+                    style={{ borderBottom: i < tenders.length - 1 ? `1px solid ${C.borderSoft}` : "none" }}>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs font-mono" style={{ color: C.inkSoft }}>{t.reference}</span>
+                        <StatusBadge status={t.status} />
+                      </div>
+                      <div className="text-sm font-medium mt-1" style={{ color: C.ink }}>{t.title}</div>
+                      <div className="mt-2 w-full max-w-xs"><ProgressBar value={progress} /></div>
                     </div>
-                    <div className="text-sm font-medium mt-1" style={{ color: C.ink }}>{t.title}</div>
-                    <div className="mt-2 w-full max-w-xs"><ProgressBar value={progress} /></div>
+                    <div className="text-sm font-medium tabular-nums" style={{ color: C.inkSoft }}>{progress}%</div>
+                    <button onClick={e => { e.stopPropagation(); onDelete(t); }} title="Supprimer cet AO" className="p-1.5 rounded hover:bg-black/5 transition-colors">
+                      <Trash2 size={15} style={{ color: C.inkSoft }} />
+                    </button>
+                    <ChevronRight size={16} className="transition-transform group-hover:translate-x-0.5" style={{ color: C.inkSoft }} />
                   </div>
-                  <div className="text-sm font-medium" style={{ color: C.inkSoft }}>{progress}%</div>
-                  <button onClick={e => { e.stopPropagation(); onDelete(t); }} title="Supprimer cet AO" className="p-1.5 rounded hover:bg-black/5 transition-colors">
-                    <Trash2 size={15} style={{ color: C.inkSoft }} />
-                  </button>
-                  <ChevronRight size={16} style={{ color: C.inkSoft }} />
-                </div>
-              );
-            })}
-          </Card>
+                );
+              })}
+            </Card>
+          )}
         </div>
         <div>
           <SectionTitle>Actions requises</SectionTitle>
           <Card>
-            {actions.length === 0 && <div className="px-5 py-5 text-sm" style={{ color: C.inkSoft }}>Aucune action en attente.</div>}
+            {actions.length === 0 && (
+              <div className="px-5 py-8 flex flex-col items-center text-center">
+                <CheckCircle2 size={20} style={{ color: C.green }} className="mb-2" />
+                <div className="text-sm" style={{ color: C.inkSoft }}>Aucune action en attente.</div>
+              </div>
+            )}
             {actions.map((a, i) => (
-              <button key={i} onClick={() => openTender(a.id)} className="w-full text-left px-5 py-3.5 flex items-start gap-3" style={{ borderBottom: i < actions.length - 1 ? `1px solid ${C.borderSoft}` : "none" }}>
+              <button key={i} onClick={() => openTender(a.id)} className="w-full text-left px-5 py-3.5 flex items-start gap-3 transition-colors hover:bg-black/[0.02]" style={{ borderBottom: i < actions.length - 1 ? `1px solid ${C.borderSoft}` : "none" }}>
                 <AlertTriangle size={15} style={{ color: C.amber, marginTop: 2 }} />
                 <div><div className="text-xs font-mono" style={{ color: C.inkSoft }}>{a.ref}</div><div className="text-sm" style={{ color: C.ink }}>{a.text}</div></div>
               </button>
@@ -1569,20 +1569,40 @@ function NewTenderWizard({ onCreate, onCancel }) {
 
   return (
     <div className="px-4 sm:px-8 py-5 sm:py-7 max-w-3xl">
-      <button onClick={onCancel} className="flex items-center gap-1.5 text-sm mb-5" style={{ color: C.inkSoft }}><ArrowLeft size={14} /> Retour au tableau de bord</button>
+      <button onClick={onCancel} className="flex items-center gap-1.5 text-sm mb-5 transition-colors hover:opacity-70" style={{ color: C.inkSoft }}><ArrowLeft size={14} /> Retour au tableau de bord</button>
       <h1 className="text-xl font-semibold mb-1" style={{ color: C.ink }}>Nouvel appel d'offres</h1>
-      <div className="flex items-center gap-2 mb-6">
-        {[1, 2, 3].map(s => (
-          <div key={s} className="flex items-center gap-2">
-            <div className="w-6 h-6 rounded-full flex items-center justify-center text-xs font-semibold transition-colors" style={{ backgroundColor: s <= step ? C.accent : C.slateSoft, color: s <= step ? "#fff" : C.inkSoft }}>{s}</div>
-            {s < 3 && <div className="w-8 h-0.5" style={{ backgroundColor: s < step ? C.accent : C.slateSoft }} />}
-          </div>
-        ))}
-        <span className="text-sm ml-2" style={{ color: C.inkSoft }}>{["Identification", "Type d'AO", "Besoin"][step - 1]}</span>
+      <p className="text-sm mb-6" style={{ color: C.inkSoft }}>Trois courtes étapes, puis l'assistant vous accompagnera dans chaque onglet.</p>
+
+      <div className="flex items-center mb-8">
+        {[
+          { n: 1, label: "Identification", icon: Info },
+          { n: 2, label: "Type d'AO", icon: ListChecks },
+          { n: 3, label: "Besoin", icon: Sparkles },
+        ].map((s, idx, arr) => {
+          const Icon = s.icon;
+          const state = s.n < step ? "done" : s.n === step ? "active" : "todo";
+          return (
+            <React.Fragment key={s.n}>
+              <div className="flex flex-col items-center gap-1.5">
+                <div className="w-9 h-9 rounded-full flex items-center justify-center text-xs font-semibold transition-all duration-300"
+                  style={{
+                    backgroundColor: state === "todo" ? C.surface : C.accent,
+                    color: state === "todo" ? C.inkSoft : "#fff",
+                    border: `1.5px solid ${state === "todo" ? C.border : C.accent}`,
+                    boxShadow: state === "active" ? `0 0 0 4px ${C.accentSoft}` : "none",
+                  }}>
+                  {state === "done" ? <CheckCircle2 size={16} /> : <Icon size={15} />}
+                </div>
+                <span className="text-[11px] font-medium whitespace-nowrap" style={{ color: state === "todo" ? C.inkSoft : C.ink }}>{s.label}</span>
+              </div>
+              {idx < arr.length - 1 && <div className="flex-1 h-0.5 mx-2 mb-5 rounded-full transition-colors duration-300" style={{ backgroundColor: s.n < step ? C.accent : C.borderSoft }} />}
+            </React.Fragment>
+          );
+        })}
       </div>
 
       {step === 1 && (
-        <Card className="p-6">
+        <Card className="p-6 ao-view-enter" key="step1">
           <SectionTitle>Identification</SectionTitle>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             {[["reference", "Référence AO"], ["title", "Titre"], ["object", "Objet"], ["direction", "Direction"], ["service", "Service"], ["responsibleMetier", "Responsable métier"], ["buyer", "Acheteur"], ["sponsor", "Sponsor"], ["budget", "Budget estimatif (CHF)"], ["dateLaunch", "Date souhaitée de lancement"], ["dateClose", "Date souhaitée de clôture"], ["dateDecision", "Date souhaitée de décision"]].map(([field, label]) => (
@@ -1629,11 +1649,11 @@ function NewTenderWizard({ onCreate, onCancel }) {
       )}
 
       {step === 2 && (
-        <Card className="p-6">
+        <Card className="p-6 ao-view-enter" key="step2">
           <SectionTitle sub="Le modèle choisi déterminera les documents et sections proposés par défaut.">Type d'appel d'offres</SectionTitle>
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 ao-stagger">
             {TENDER_TYPES.map(type => (
-              <button key={type} onClick={() => set("type", type)} className="px-3 py-3 rounded text-sm text-left" style={{ border: `1px solid ${form.type === type ? C.accent : C.border}`, backgroundColor: form.type === type ? C.accentSoft : C.surface, color: form.type === type ? C.accentDark : C.ink }}>{type}</button>
+              <button key={type} onClick={() => set("type", type)} className="px-3 py-3 rounded text-sm text-left transition-all duration-150 hover:-translate-y-0.5" style={{ border: `1px solid ${form.type === type ? C.accent : C.border}`, backgroundColor: form.type === type ? C.accentSoft : C.surface, color: form.type === type ? C.accentDark : C.ink, boxShadow: form.type === type ? `0 0 0 3px ${C.accentSoft}` : "none" }}>{type}</button>
             ))}
           </div>
           <div className="flex justify-between mt-6">
@@ -1644,7 +1664,7 @@ function NewTenderWizard({ onCreate, onCancel }) {
       )}
 
       {step === 3 && (
-        <Card className="p-6">
+        <Card className="p-6 ao-view-enter" key="step3">
           <SectionTitle sub="Décrivez librement le besoin, puis laissez l'assistant proposer une structuration.">Définition du besoin</SectionTitle>
           <textarea value={rawNeed} onChange={e => setRawNeed(e.target.value)} rows={4} placeholder="Ex. « Nous voulons remplacer notre outil actuel de gestion des postes et améliorer le patching. »" className="w-full px-3 py-2.5 rounded text-sm outline-none resize-none" style={inputStyle} />
           <div className="flex items-center gap-3 mt-3">
@@ -1654,7 +1674,7 @@ function NewTenderWizard({ onCreate, onCancel }) {
             {aiError && <span className="text-xs" style={{ color: C.red }}>{aiError}</span>}
           </div>
           {structured && (
-            <div className="mt-5 pt-5 space-y-4" style={{ borderTop: `1px solid ${C.borderSoft}` }}>
+            <div className="mt-5 pt-5 space-y-4 ao-fade-in" style={{ borderTop: `1px solid ${C.borderSoft}` }}>
               <div className="text-xs font-medium" style={{ color: C.accentDark }}>Proposition de l'assistant — à valider avant création</div>
               {[["Contexte", structured.contexte], ["Problématique", structured.problematique]].map(([label, val]) => val && (
                 <div key={label}><div className="text-xs font-medium mb-1" style={{ color: C.inkSoft }}>{label}</div><div className="text-sm" style={{ color: C.ink }}>{val}</div></div>
@@ -2618,7 +2638,7 @@ function QualityCheck({ t }) {
     <Card className="p-5 mb-6">
       <div className="flex items-center justify-between mb-3"><div className="text-sm font-semibold" style={{ color: C.ink }}>AO prêt à {pct}%</div></div>
       <ProgressBar value={pct} />
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-1.5 mt-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-1.5 mt-4 ao-stagger">
         {checks.map(c => <div key={c.label} className="flex items-center gap-2 text-sm">{c.ok ? <CheckCircle2 size={14} style={{ color: C.green }} /> : <Circle size={14} style={{ color: C.amber }} />}<span style={{ color: c.ok ? C.ink : C.inkSoft }}>{c.label}</span></div>)}
       </div>
     </Card>
@@ -2633,7 +2653,7 @@ function GuidanceBanner({ tender, onJump }) {
   return (
     <button onClick={() => onJump(step.tab)} className="w-full text-left flex items-center gap-3 px-5 py-3.5 rounded-lg mb-5 transition-colors hover:brightness-[0.98]"
       style={{ backgroundColor: step.done ? C.greenSoft : C.accentSoft, border: `1px solid ${step.done ? C.green : C.accent}` }}>
-      <div className="w-8 h-8 rounded-full flex items-center justify-center shrink-0" style={{ backgroundColor: step.done ? C.green : C.accent }}>
+      <div key={step.done ? "done" : step.tab} className="w-8 h-8 rounded-full flex items-center justify-center shrink-0 ao-pop" style={{ backgroundColor: step.done ? C.green : C.accent }}>
         {step.done ? <CheckCircle2 size={16} color="#fff" /> : <Icon size={15} color="#fff" />}
       </div>
       <div className="flex-1">
@@ -2864,14 +2884,16 @@ export default function App() {
   }
 
   return (
-    <div className="flex min-h-screen" style={{ backgroundColor: C.bg, fontFamily: "ui-sans-serif, system-ui, -apple-system, sans-serif" }}>
+    <div className="flex min-h-screen" style={{ backgroundColor: C.bg, fontFamily: "Inter, ui-sans-serif, system-ui, -apple-system, sans-serif" }}>
       <Sidebar view={view === "detail" ? "" : view} setView={v => { setView(v); setSelectedId(null); }} isMobile={isMobile} open={drawerOpen} onClose={() => setDrawerOpen(false)} onReset={resetDemoData} onLogout={() => supabase.auth.signOut()} userEmail={session.user.email} />
       <div className="flex-1 min-w-0">
         <TopBar isMobile={isMobile} onMenuClick={() => setDrawerOpen(true)} crumbs={view === "dashboard" ? ["Tableau de bord"] : view === "new" ? ["Tableau de bord", "Nouvel appel d'offres"] : ["Tableau de bord", selected?.reference || ""]} />
         {saveError && <div className="text-xs text-center py-1.5" style={{ backgroundColor: C.redSoft, color: C.red }}>La sauvegarde automatique a échoué pour la dernière modification — vos données restent visibles ici, mais pourraient ne pas persister après fermeture.</div>}
-        {view === "dashboard" && <Dashboard tenders={tenders} openTender={openTender} goNew={() => setView("new")} onDelete={deleteTender} />}
-        {view === "new" && <NewTenderWizard onCreate={createTender} onCancel={() => setView("dashboard")} />}
-        {view === "detail" && selected && <TenderDetail tender={selected} updateTender={updateTender} back={() => setView("dashboard")} onDelete={deleteTender} />}
+        <div key={view === "detail" ? `detail-${selectedId}` : view} className="ao-view-enter">
+          {view === "dashboard" && <Dashboard tenders={tenders} openTender={openTender} goNew={() => setView("new")} onDelete={deleteTender} />}
+          {view === "new" && <NewTenderWizard onCreate={createTender} onCancel={() => setView("dashboard")} />}
+          {view === "detail" && selected && <TenderDetail tender={selected} updateTender={updateTender} back={() => setView("dashboard")} onDelete={deleteTender} />}
+        </div>
       </div>
       <ConfirmDialog open={!!pendingDelete} danger confirmLabel="Supprimer"
         title="Supprimer cet appel d'offres ?"

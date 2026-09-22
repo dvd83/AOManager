@@ -4,7 +4,40 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>AO Manager</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500&display=swap" rel="stylesheet" />
     <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+      html { font-family: "Inter", ui-sans-serif, system-ui, sans-serif; }
+      .font-mono { font-family: "JetBrains Mono", ui-monospace, monospace; }
+      body { -webkit-font-smoothing: antialiased; }
+
+      @keyframes aoFadeUp { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: translateY(0); } }
+      @keyframes aoFadeIn { from { opacity: 0; } to { opacity: 1; } }
+      @keyframes aoScaleIn { from { opacity: 0; transform: scale(0.96); } to { opacity: 1; transform: scale(1); } }
+      @keyframes aoPop { 0% { transform: scale(0.85); opacity: 0; } 60% { transform: scale(1.04); opacity: 1; } 100% { transform: scale(1); } }
+      .ao-view-enter { animation: aoFadeUp 0.28s cubic-bezier(0.22, 1, 0.36, 1) both; }
+      .ao-fade-in { animation: aoFadeIn 0.2s ease both; }
+      .ao-scale-in { animation: aoScaleIn 0.18s cubic-bezier(0.22, 1, 0.36, 1) both; }
+      .ao-pop { animation: aoPop 0.35s cubic-bezier(0.22, 1, 0.36, 1) both; }
+      .ao-stagger > * { animation: aoFadeUp 0.32s cubic-bezier(0.22, 1, 0.36, 1) both; }
+      .ao-stagger > *:nth-child(1) { animation-delay: 0.02s; }
+      .ao-stagger > *:nth-child(2) { animation-delay: 0.06s; }
+      .ao-stagger > *:nth-child(3) { animation-delay: 0.1s; }
+      .ao-stagger > *:nth-child(4) { animation-delay: 0.14s; }
+      .ao-stagger > *:nth-child(5) { animation-delay: 0.18s; }
+      .ao-stagger > *:nth-child(6) { animation-delay: 0.22s; }
+
+      ::-webkit-scrollbar { width: 10px; height: 10px; }
+      ::-webkit-scrollbar-track { background: transparent; }
+      ::-webkit-scrollbar-thumb { background: #DDD8CE; border-radius: 999px; }
+      ::-webkit-scrollbar-thumb:hover { background: #C9C3B5; }
+
+      @media (prefers-reduced-motion: reduce) {
+        .ao-view-enter, .ao-fade-in, .ao-scale-in, .ao-pop, .ao-stagger > * { animation: none !important; }
+      }
+    </style>
   </head>
   <body>
     <div id="root"></div>
