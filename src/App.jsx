@@ -2096,7 +2096,15 @@ function RequirementsTab({ t, updateTender }) {
     const n = t.requirements.filter(r => r.id.startsWith(prefix)).length + 1;
     const newReq = { id: `${prefix}-${String(n).padStart(3, "0")}`, category, description: form.description, criticality: form.criticality, mandatory: form.mandatory, verificationMethod: form.verificationMethod, includeInCDC: form.includeInCDC };
     updateTender(prev => ({ ...prev, requirements: [...prev.requirements, newReq] }));
+    upsertLibraryItem("requirement", { category, description: form.description, criticality: form.criticality, mandatory: form.mandatory, verification_method: form.verificationMethod }).catch(() => {});
     setForm(f => ({ ...f, description: "", verificationMethod: "" }));
+  }
+  function addFromLibrary(item) {
+    const category = item.category || "Général";
+    const prefix = category.trim().slice(0, 3).toUpperCase();
+    const n = t.requirements.filter(r => r.id.startsWith(prefix)).length + 1;
+    const newReq = { id: `${prefix}-${String(n).padStart(3, "0")}`, category, description: item.description, criticality: item.criticality || "Normale", mandatory: !!item.mandatory, verificationMethod: item.verification_method || "", includeInCDC: true };
+    updateTender(prev => ({ ...prev, requirements: [...prev.requirements, newReq] }));
   }
   function removeRequirement(id) { updateTender(prev => ({ ...prev, requirements: prev.requirements.filter(r => r.id !== id) })); }
   function toggleIncludeInCDC(id) { updateTender(prev => ({ ...prev, requirements: prev.requirements.map(r => r.id === id ? { ...r, includeInCDC: r.includeInCDC === false } : r) })); }
@@ -2104,6 +2112,7 @@ function RequirementsTab({ t, updateTender }) {
 
   return (
     <div className="space-y-4">
+      <LibraryPicker kind="requirement" title="Réutiliser depuis un autre AO" onPick={addFromLibrary} />
       <Card className="p-5">
         <div className="flex items-start justify-between gap-3 mb-1">
           <SectionTitle sub="Choisissez le type parmi les catégories standards utilisées dans les cahiers des charges — chaque exigence sera reprise automatiquement dans le cahier des charges et le cahier de réponses, sauf si vous décochez « Inclure dans le CDC ».">Ajouter une exigence</SectionTitle>
@@ -2207,7 +2216,11 @@ function CriteriaTab({ t, updateTender }) {
   function addCriterion() {
     if (!newCriterion.name.trim()) return;
     updateTender(prev => ({ ...prev, criteria: [...prev.criteria, { id: `c${Date.now()}`, name: newCriterion.name.trim(), weight: Number(newCriterion.weight) || 0 }] }));
+    upsertLibraryItem("criterion", { description: newCriterion.name.trim(), weight: Number(newCriterion.weight) || null }).catch(() => {});
     setNewCriterion({ name: "", weight: "" });
+  }
+  function addCriterionFromLibrary(item) {
+    updateTender(prev => ({ ...prev, criteria: [...prev.criteria, { id: `c${Date.now()}`, name: item.description, weight: item.weight || 0 }] }));
   }
   async function suggestCriteria() {
     setSuggesting(true); setSuggestError("");
@@ -2224,6 +2237,7 @@ function CriteriaTab({ t, updateTender }) {
   }
   return (
     <div className="space-y-4">
+    <LibraryPicker kind="criterion" title="Réutiliser depuis un autre AO" onPick={addCriterionFromLibrary} />
     <Card className="p-6">
       <div className="flex items-start justify-between gap-3 mb-1">
         <SectionTitle sub="La « pondération » = l'importance de chaque critère, en %. Le total doit faire 100%. Ajoutez un critère « Prix » pour que son coût soit noté automatiquement dans l'onglet Évaluation.">Critères d'évaluation</SectionTitle>
@@ -2282,6 +2296,63 @@ async function upsertSupplierRegistry(name, email) {
   if (!name?.trim()) return;
   const looksLikeEmail = /.+@.+\..+/.test(email || "");
   await supabase.from("suppliers_registry").insert({ name: name.trim(), email: looksLikeEmail ? email.trim() : null }).select();
+}
+
+// Alimente la bibliothèque partagée d'exigences/critères — best-effort, évite les doublons
+// évidents (même texte déjà présent) avant d'insérer.
+async function upsertLibraryItem(kind, fields) {
+  const description = (fields.description || "").trim();
+  if (!description) return;
+  const { data: existing } = await supabase.from("library_items").select("id").eq("kind", kind).ilike("description", description).limit(1);
+  if (existing && existing.length) return;
+  await supabase.from("library_items").insert({ kind, description, ...fields });
+}
+
+// Widget de réutilisation : liste les éléments déjà utilisés dans d'autres AO (exigences ou
+// critères), avec recherche, pour les ajouter en un clic plutôt que de tout ressaisir.
+function LibraryPicker({ kind, onPick, title }) {
+  const [open, setOpen] = useState(false);
+  const [items, setItems] = useState(null);
+  const [query, setQuery] = useState("");
+
+  function toggle() {
+    setOpen(o => !o);
+    if (!open && items === null) {
+      supabase.from("library_items").select("id, category, description, criticality, mandatory, verification_method, weight")
+        .eq("kind", kind).order("created_at", { ascending: false }).limit(200)
+        .then(({ data }) => setItems(data || []));
+    }
+  }
+
+  const filtered = (items || []).filter(it => !query.trim() || it.description.toLowerCase().includes(query.toLowerCase()) || (it.category || "").toLowerCase().includes(query.toLowerCase()));
+
+  return (
+    <div className="mb-3">
+      <button onClick={toggle} className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium shrink-0" style={{ border: `1px solid ${C.border}`, color: C.inkSoft, backgroundColor: C.surface }}>
+        <Building2 size={13} /> {title}
+      </button>
+      {open && (
+        <Card className="p-4 mt-2 ao-fade-in">
+          <input value={query} onChange={e => setQuery(e.target.value)} placeholder="Rechercher…" className="w-full px-3 py-2 rounded text-sm outline-none mb-3" style={{ border: `1px solid ${C.border}` }} />
+          {items === null && <div className="text-xs" style={{ color: C.inkSoft }}>Chargement…</div>}
+          {items !== null && filtered.length === 0 && <div className="text-xs" style={{ color: C.inkSoft }}>Aucun élément { query ? "ne correspond à la recherche" : "réutilisable pour l'instant — la bibliothèque se remplit au fil des AO" }.</div>}
+          <div className="space-y-1.5 max-h-64 overflow-y-auto">
+            {filtered.map(it => (
+              <div key={it.id} className="flex items-start gap-2 p-2 rounded" style={{ border: `1px solid ${C.borderSoft}` }}>
+                <div className="flex-1 min-w-0 text-sm" style={{ color: C.ink }}>
+                  {it.category && <span className="text-xs mr-1.5" style={{ color: C.inkSoft }}>[{it.category}]</span>}
+                  {it.description}{it.weight != null && <span className="text-xs ml-1.5" style={{ color: C.inkSoft }}>({it.weight}%)</span>}
+                </div>
+                <button onClick={() => onPick(it)} className="flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium shrink-0 text-white" style={{ backgroundColor: C.accent }}>
+                  <Plus size={11} /> Ajouter
+                </button>
+              </div>
+            ))}
+          </div>
+        </Card>
+      )}
+    </div>
+  );
 }
 
 function SuppliersTab({ t, updateTender }) {
