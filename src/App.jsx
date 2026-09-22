@@ -5,7 +5,7 @@ import {
   LayoutDashboard, FilePlus2, FileText, ListChecks, Scale, Users,
   ClipboardCheck, BarChart3, FileBarChart2, History, ChevronRight,
   AlertTriangle, CheckCircle2, Sparkles, ArrowLeft, Info,
-  ShieldCheck, Building2, Search, Bell, Circle, Download, Plus, Trash2, PenLine, Menu, X
+  ShieldCheck, Building2, Search, Bell, Circle, Download, Upload, Plus, Trash2, PenLine, Menu, X
 } from "lucide-react";
 
 /* =========================================================================
@@ -1376,10 +1376,10 @@ function Sidebar({ view, setView, isMobile, open, onClose, onReset, onLogout, us
   const navItems = [
     { key: "dashboard", label: "Tableau de bord", icon: LayoutDashboard },
     { key: "new", label: "Nouvel appel d'offres", icon: FilePlus2 },
+    { key: "suppliers-registry", label: "Fournisseurs (registre)", icon: Building2 },
     ...(isAdmin ? [{ key: "admin", label: "Administration", icon: ShieldCheck }] : []),
   ];
   const soon = [
-    { label: "Fournisseurs (registre)", icon: Building2 },
     { label: "Modèles d'AO", icon: ListChecks },
     ...(isAdmin ? [] : [{ label: "Administration", icon: ShieldCheck }]),
   ];
@@ -2356,6 +2356,14 @@ function CriteriaTab({ t, updateTender }) {
 
 /* --------------------------------- ONGLET FOURNISSEURS --------------------------------- */
 
+// Alimente le registre partagé des fournisseurs au fil des AO — best-effort, ne bloque jamais
+// la création du fournisseur dans l'AO si ça échoue (ex. doublon d'email déjà connu).
+async function upsertSupplierRegistry(name, email) {
+  if (!name?.trim()) return;
+  const looksLikeEmail = /.+@.+\..+/.test(email || "");
+  await supabase.from("suppliers_registry").insert({ name: name.trim(), email: looksLikeEmail ? email.trim() : null }).select();
+}
+
 function SuppliersTab({ t, updateTender }) {
   const [form, setForm] = useState({ name: "", contact: "" });
   const inputStyle = { border: `1px solid ${C.border}` };
@@ -2369,6 +2377,7 @@ function SuppliersTab({ t, updateTender }) {
       documents: expectedDocs.length ? expectedDocs : [{ name: "Cahier de réponses", received: false }, { name: "Offre financière", received: false }],
       price: { initial: 0, annual: 0, maintenance: 0, migration: 0 }, evaluations: {},
     }] }));
+    upsertSupplierRegistry(form.name, form.contact).catch(() => {});
     setForm({ name: "", contact: "" });
   }
   function removeSupplier(id) { updateTender(prev => ({ ...prev, suppliers: prev.suppliers.filter(s => s.id !== id) })); }
@@ -2899,6 +2908,126 @@ function AdminPanel({ currentUserId }) {
   );
 }
 
+/* --------------------------------- REGISTRE FOURNISSEURS --------------------------------- */
+
+function SupplierRegistryPage({ isAdmin }) {
+  const [suppliers, setSuppliers] = useState(null);
+  const [error, setError] = useState("");
+  const [form, setForm] = useState({ name: "", email: "" });
+  const [query, setQuery] = useState("");
+  const [importing, setImporting] = useState(false);
+  const [importSummary, setImportSummary] = useState("");
+
+  async function load() {
+    const { data, error } = await supabase.from("suppliers_registry").select("id, name, email, created_at").order("name");
+    if (error) { setError(error.message); return; }
+    setSuppliers(data || []);
+  }
+  useEffect(() => { load(); }, []);
+
+  async function addManual() {
+    if (!form.name.trim()) return;
+    const { error } = await supabase.from("suppliers_registry").insert({ name: form.name.trim(), email: form.email.trim() || null });
+    if (error) { setError(error.message); return; }
+    setForm({ name: "", email: "" }); setError("");
+    load();
+  }
+
+  async function remove(id) {
+    const { error } = await supabase.from("suppliers_registry").delete().eq("id", id);
+    if (error) { setError(error.message); return; }
+    load();
+  }
+
+  async function handleFile(e) {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file) return;
+    setImporting(true); setError(""); setImportSummary("");
+    try {
+      const buf = await file.arrayBuffer();
+      const wb = XLSX.read(buf, { type: "array" });
+      const sheet = wb.Sheets[wb.SheetNames[0]];
+      const rows = XLSX.utils.sheet_to_json(sheet, { defval: "" });
+      const existingEmails = new Set((suppliers || []).map(s => (s.email || "").toLowerCase()).filter(Boolean));
+      const toInsert = [];
+      let skipped = 0;
+      for (const row of rows) {
+        const keys = Object.keys(row);
+        const nameKey = keys.find(k => /nom|name|fournisseur/i.test(k)) ?? keys[0];
+        const emailKey = keys.find(k => /mail/i.test(k)) ?? keys[1];
+        const name = String(row[nameKey] ?? "").trim();
+        const email = String(row[emailKey] ?? "").trim();
+        if (!name) { skipped++; continue; }
+        if (email && existingEmails.has(email.toLowerCase())) { skipped++; continue; }
+        if (email) existingEmails.add(email.toLowerCase());
+        toInsert.push({ name, email: email || null });
+      }
+      if (toInsert.length) {
+        const { error } = await supabase.from("suppliers_registry").insert(toInsert);
+        if (error) throw error;
+      }
+      setImportSummary(`${toInsert.length} fournisseur${toInsert.length > 1 ? "s" : ""} importé${toInsert.length > 1 ? "s" : ""}${skipped ? `, ${skipped} ligne${skipped > 1 ? "s" : ""} ignorée${skipped > 1 ? "s" : ""} (doublon ou nom manquant)` : ""}.`);
+      load();
+    } catch (err) {
+      setError(`Import échoué (${err.message || "erreur inconnue"}).`);
+    } finally { setImporting(false); }
+  }
+
+  const filtered = (suppliers || []).filter(s => !query.trim() || s.name.toLowerCase().includes(query.toLowerCase()) || (s.email || "").toLowerCase().includes(query.toLowerCase()));
+
+  return (
+    <div className="px-4 sm:px-8 py-5 sm:py-7 max-w-4xl">
+      <h1 className="text-xl font-semibold" style={{ color: C.ink }}>Fournisseurs (registre)</h1>
+      <p className="text-sm mt-1 mb-6" style={{ color: C.inkSoft }}>
+        Alimenté automatiquement à chaque fournisseur ajouté dans un appel d'offres{isAdmin ? " — vous pouvez aussi compléter la liste manuellement ou en importer une." : "."}
+      </p>
+
+      {error && <div className="text-sm mb-4 px-4 py-2.5 rounded-lg" style={{ backgroundColor: C.redSoft, color: C.red }}>{error}</div>}
+      {importSummary && <div className="text-sm mb-4 px-4 py-2.5 rounded-lg" style={{ backgroundColor: C.greenSoft, color: C.green }}>{importSummary}</div>}
+
+      {isAdmin && (
+        <Card className="p-5 mb-5">
+          <SectionTitle>Ajouter des fournisseurs</SectionTitle>
+          <div className="flex flex-col sm:flex-row gap-3 sm:items-end mb-4">
+            <label className="text-sm flex-1"><div className="mb-1" style={{ color: C.inkSoft }}>Nom</div>
+              <input value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))} className="w-full px-3 py-2 rounded text-sm outline-none" style={{ border: `1px solid ${C.border}` }} /></label>
+            <label className="text-sm flex-1"><div className="mb-1" style={{ color: C.inkSoft }}>Email</div>
+              <input value={form.email} onChange={e => setForm(f => ({ ...f, email: e.target.value }))} placeholder="contact@fournisseur.example" className="w-full px-3 py-2 rounded text-sm outline-none" style={{ border: `1px solid ${C.border}` }} /></label>
+            <PrimaryButton icon={Plus} onClick={addManual}>Ajouter</PrimaryButton>
+          </div>
+          <label className="inline-flex items-center gap-2 text-sm font-medium px-3.5 py-2 rounded-full cursor-pointer transition-colors hover:brightness-95" style={{ border: `1px solid ${C.accent}`, color: C.accentDark, backgroundColor: C.accentSoft }}>
+            <Upload size={14} /> {importing ? "Import en cours…" : "Importer un fichier Excel"}
+            <input type="file" accept=".xlsx,.xls,.csv" className="hidden" onChange={handleFile} disabled={importing} />
+          </label>
+          <div className="text-xs mt-2" style={{ color: C.inkSoft }}>Fichier .xlsx / .xls / .csv à deux colonnes : nom du fournisseur, email (en-têtes libres, ex. « Nom » / « Email »).</div>
+        </Card>
+      )}
+
+      <div className="mb-3">
+        <input value={query} onChange={e => setQuery(e.target.value)} placeholder="Rechercher un fournisseur…" className="w-full sm:w-80 px-3 py-2 rounded text-sm outline-none" style={{ border: `1px solid ${C.border}` }} />
+      </div>
+
+      {suppliers === null ? (
+        <div className="text-sm" style={{ color: C.inkSoft }}>Chargement…</div>
+      ) : (
+        <Card className="ao-stagger">
+          {filtered.length === 0 && <div className="px-5 py-8 text-sm text-center" style={{ color: C.inkSoft }}>Aucun fournisseur{query ? " ne correspond à la recherche" : " enregistré pour l'instant — il se remplira au fil des AO"}.</div>}
+          {filtered.map((s, i) => (
+            <div key={s.id} className="px-5 py-3.5 flex items-center gap-4" style={{ borderBottom: i < filtered.length - 1 ? `1px solid ${C.borderSoft}` : "none" }}>
+              <div className="flex-1 min-w-0">
+                <div className="text-sm font-medium" style={{ color: C.ink }}>{s.name}</div>
+                <div className="text-xs mt-0.5" style={{ color: C.inkSoft }}>{s.email || "—"}</div>
+              </div>
+              {isAdmin && <button onClick={() => remove(s.id)} title="Supprimer" className="p-1.5 rounded hover:bg-black/5 transition-colors"><Trash2 size={14} style={{ color: C.inkSoft }} /></button>}
+            </div>
+          ))}
+        </Card>
+      )}
+    </div>
+  );
+}
+
 export default function App() {
   const [session, setSession] = useState(undefined); // undefined = pas encore vérifié, null = pas connecté
   const [tenders, setTenders] = useState([]);
@@ -3014,13 +3143,14 @@ export default function App() {
     <div className="flex min-h-screen" style={{ backgroundColor: C.bg, fontFamily: "Inter, ui-sans-serif, system-ui, -apple-system, sans-serif" }}>
       <Sidebar view={view === "detail" ? "" : view} setView={v => { setView(v); setSelectedId(null); }} isMobile={isMobile} open={drawerOpen} onClose={() => setDrawerOpen(false)} onReset={resetDemoData} onLogout={() => supabase.auth.signOut()} userEmail={session.user.email} isAdmin={isAdmin} />
       <div className="flex-1 min-w-0">
-        <TopBar isMobile={isMobile} onMenuClick={() => setDrawerOpen(true)} crumbs={view === "dashboard" ? ["Tableau de bord"] : view === "new" ? ["Tableau de bord", "Nouvel appel d'offres"] : view === "admin" ? ["Administration"] : ["Tableau de bord", selected?.reference || ""]} />
+        <TopBar isMobile={isMobile} onMenuClick={() => setDrawerOpen(true)} crumbs={view === "dashboard" ? ["Tableau de bord"] : view === "new" ? ["Tableau de bord", "Nouvel appel d'offres"] : view === "admin" ? ["Administration"] : view === "suppliers-registry" ? ["Fournisseurs (registre)"] : ["Tableau de bord", selected?.reference || ""]} />
         {saveError && <div className="text-xs text-center py-1.5" style={{ backgroundColor: C.redSoft, color: C.red }}>La sauvegarde automatique a échoué pour la dernière modification — vos données restent visibles ici, mais pourraient ne pas persister après fermeture.</div>}
         <div key={view === "detail" ? `detail-${selectedId}` : view} className="ao-view-enter">
           {view === "dashboard" && <Dashboard tenders={tenders} openTender={openTender} goNew={() => setView("new")} onDelete={deleteTender} />}
           {view === "new" && <NewTenderWizard onCreate={createTender} onCancel={() => setView("dashboard")} />}
           {view === "detail" && selected && <TenderDetail tender={selected} updateTender={updateTender} back={() => setView("dashboard")} onDelete={deleteTender} />}
           {view === "admin" && isAdmin && <AdminPanel currentUserId={session.user.id} />}
+          {view === "suppliers-registry" && <SupplierRegistryPage isAdmin={isAdmin} />}
         </div>
       </div>
       <ConfirmDialog open={!!pendingDelete} danger confirmLabel="Supprimer"
