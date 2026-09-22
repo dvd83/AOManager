@@ -144,7 +144,7 @@ function procedureHelpText(label) {
 
 /* --------------------------- MODÈLES DE DOCUMENTS (rédaction guidée) -------------------------- */
 
-const TABLE_DOC_NAMES = ["Bordereau de prix"];
+const TABLE_DOC_NAMES = ["Série de prix"];
 const AUTO_TABLE_DOC_NAMES = ["Cahier de réponses"];
 const QUESTIONS_DOC_NAMES = ["Annexe A - Compréhension des besoins"];
 
@@ -223,14 +223,11 @@ const TEXT_SCHEMAS = {
 
 function genericSchema(t) { return [{ key: "contenu", label: "Contenu du document", seed: "" }]; }
 
-function defaultBordereauRows() {
-  return [
-    { poste: "Prix initial (licences / matériel)", montant: "", commentaire: "" },
-    { poste: "Coût annuel de licence / abonnement", montant: "", commentaire: "" },
-    { poste: "Maintenance annuelle", montant: "", commentaire: "" },
-    { poste: "Coûts de migration / mise en œuvre", montant: "", commentaire: "" },
-    { poste: "Options", montant: "", commentaire: "" },
-  ];
+// Structure d'une série de prix : une ligne par position (référence, intitulé, quantité), le
+// soumissionnaire complète le tarif unitaire — le tarif total par ligne et le total général
+// sont calculés automatiquement (jamais saisis directement).
+function defaultPriceScheduleRows() {
+  return [{ ref: "", label: "", quantity: 1, unitPrice: "" }];
 }
 
 /* --------------------------------- DONNÉES DE DÉMONSTRATION (fictives) -------------------------- */
@@ -265,7 +262,7 @@ function makeTender1() {
       { id: "d4", name: "SLA", category: "Contractuel", mandatory: true, owner: "Métier", status: "Envoyé" },
       { id: "d5", name: "NDA", category: "Administratif", mandatory: true, owner: "Achats", status: "Envoyé" },
       { id: "d6", name: "Contrat", category: "Contractuel", mandatory: true, owner: "Achats", status: "En cours" },
-      { id: "d7", name: "Bordereau de prix", category: "Financier", mandatory: true, owner: "Achats", status: "Envoyé" },
+      { id: "d7", name: "Série de prix", category: "Financier", mandatory: true, owner: "Achats", status: "Envoyé" },
       { id: "d8", name: "Développement durable", category: "Procédure", mandatory: false, owner: "Achats", status: "À préparer" },
     ],
     requirements: [
@@ -336,7 +333,7 @@ function makeTender2() {
       { id: "d3", name: "Cahier de réponses", category: "Technique", mandatory: true, owner: "Métier", status: "À préparer" },
       { id: "d4", name: "SLA", category: "Contractuel", mandatory: true, owner: "Métier", status: "À préparer" },
       { id: "d6", name: "Contrat", category: "Contractuel", mandatory: true, owner: "Achats", status: "À préparer" },
-      { id: "d7", name: "Bordereau de prix", category: "Financier", mandatory: true, owner: "Achats", status: "À préparer" },
+      { id: "d7", name: "Série de prix", category: "Financier", mandatory: true, owner: "Achats", status: "À préparer" },
     ],
     requirements: [{ id: "RES-001", category: "Infrastructure", description: "Disponibilité minimale de 99.9% sur les liens inter-sites.", criticality: "Critique", mandatory: true, verificationMethod: "SLA" }],
     criteria: [], suppliers: [], history: [{ date: "2026-08-01 08:30", user: "C. Keller", action: "Création de l'AO" }],
@@ -372,7 +369,7 @@ function makeTender4() {
       { id: "d1", name: "Procédure AO", category: "Procédure", mandatory: true, owner: "Achats", status: "Validé" },
       { id: "d2", name: "Cahier des charges", category: "Technique", mandatory: true, owner: "Métier", status: "Validé" },
       { id: "d3", name: "Cahier de réponses", category: "Technique", mandatory: true, owner: "Métier", status: "Reçu" },
-      { id: "d7", name: "Bordereau de prix", category: "Financier", mandatory: true, owner: "Achats", status: "Reçu" },
+      { id: "d7", name: "Série de prix", category: "Financier", mandatory: true, owner: "Achats", status: "Reçu" },
     ],
     requirements: [{ id: "MAT-001", category: "Matériel", description: "Garantie constructeur minimale de 3 ans sur site.", criticality: "Critique", mandatory: true, verificationMethod: "Documentation" }],
     criteria: [{ id: "c1", name: "Technique", weight: 40 }, { id: "c2", name: "Prix", weight: 40 }, { id: "c3", name: "Support", weight: 20 }],
@@ -894,10 +891,31 @@ function generateDocumentFile(tender, doc) {
     return;
   }
   if (TABLE_DOC_NAMES.includes(doc.name)) {
-    const rows = doc.content?.rows || defaultBordereauRows();
+    const rows = doc.content?.rows || defaultPriceScheduleRows();
+    const header = ["Référence", "Intitulé de la ligne", "Quantité", "Tarif unitaire (CHF)", "Tarif total (CHF)"];
+    const out = []; const styles = []; const merges = []; const formulas = [];
+    out.push([`SÉRIE DE PRIX — ${tender.reference} — ${tender.title || ""}`.trim()]);
+    merges.push({ r1: 0, c1: 0, r2: 0, c2: header.length - 1 });
+    styles.push({ row: 0, cols: Array.from({ length: header.length }, (_, i) => i), style: XLS_STYLE.title });
+    out.push([]);
+    out.push(header);
+    styles.push({ row: out.length - 1, cols: Array.from({ length: header.length }, (_, i) => i), style: XLS_STYLE.tableHeader });
+    const firstRow = out.length + 1;
+    rows.forEach(r => {
+      const rowNum = out.length + 1;
+      out.push([r.ref || "", r.label || "", Number(r.quantity) || 0, r.unitPrice === "" || r.unitPrice == null ? "" : Number(r.unitPrice), null]);
+      formulas.push({ ref: `E${rowNum}`, f: `C${rowNum}*D${rowNum}` });
+      styles.push({ row: out.length - 1, cols: [0, 1, 2, 3, 4], style: XLS_STYLE.data });
+    });
+    const lastRow = out.length;
+    out.push(["", "Total", "", "", null]);
+    styles.push({ row: out.length - 1, cols: [0, 1, 2, 3, 4], style: XLS_STYLE.total });
+    formulas.push({ ref: `E${out.length}`, f: `SUM(E${firstRow}:E${lastRow})` });
+    out.push([]);
+    out.push(["Remarque : le total est à reporter dans le document récapitulatif de l'offre. Toutes les positions doivent être complétées — aucun prix à 0 ne peut être accepté."]);
+    styles.push({ row: out.length - 1, cols: [0], style: XLS_STYLE.subtitle });
     downloadXLSX(`${tender.reference}_${slug(doc.name)}.xlsx`, [{
-      name: doc.name,
-      rows: [["Poste", "Montant (CHF)", "Commentaire"], ...rows.map(r => [r.poste, r.montant, r.commentaire])],
+      name: doc.name, cols: [16, 44, 10, 16, 16], rows: out, formulas, styles, merges, rowHeights: [22],
     }]);
     return;
   }
@@ -1593,7 +1611,7 @@ function NewTenderWizard({ onCreate, onCancel }) {
         { id: "d1", name: "Procédure AO", category: "Procédure", mandatory: true, owner: "Achats", status: "À préparer" },
         { id: "d2", name: "Cahier des charges", category: "Technique", mandatory: true, owner: "Métier", status: "À préparer" },
         { id: "d3", name: "Cahier de réponses", category: "Technique", mandatory: true, owner: "Métier", status: "À préparer" },
-        { id: "d7", name: "Bordereau de prix", category: "Financier", mandatory: true, owner: "Achats", status: "À préparer" },
+        { id: "d7", name: "Série de prix", category: "Financier", mandatory: true, owner: "Achats", status: "À préparer" },
         { id: "d8", name: "Annexe A - Compréhension des besoins", category: "Technique", mandatory: false, owner: "Métier", status: "À préparer" },
       ],
       history: [{ date: new Date().toISOString().slice(0, 16).replace("T", " "), user: "Vous", action: "Création de l'AO" }],
@@ -1953,34 +1971,46 @@ function TextDocEditor({ doc, tender, updateTender, onSave, onGenerate }) {
 }
 
 function TableDocEditor({ doc, onSave, onGenerate }) {
-  const rows = doc.content?.rows || defaultBordereauRows();
+  const rows = doc.content?.rows || defaultPriceScheduleRows();
   function updateCell(i, field, val) { onSave({ rows: rows.map((r, idx) => idx === i ? { ...r, [field]: val } : r) }); }
-  function addRow() { onSave({ rows: [...rows, { poste: "", montant: "", commentaire: "" }] }); }
+  function addRow() { onSave({ rows: [...rows, { ref: "", label: "", quantity: 1, unitPrice: "" }] }); }
   function removeRow(i) { onSave({ rows: rows.filter((_, idx) => idx !== i) }); }
+  const lineTotal = r => (Number(r.quantity) || 0) * (Number(r.unitPrice) || 0);
+  const grandTotal = rows.reduce((sum, r) => sum + lineTotal(r), 0);
   return (
     <Card className="p-6 mt-3">
-      <div className="flex items-center justify-between mb-4">
+      <div className="flex items-center justify-between mb-1">
         <div className="text-sm font-semibold" style={{ color: C.ink }}>{doc.name} — rédaction guidée</div>
         <GhostButton icon={Plus} onClick={addRow}>Ajouter une ligne</GhostButton>
       </div>
+      <div className="text-xs mb-4" style={{ color: C.inkSoft }}>Une ligne par position (référence, intitulé, quantité) ; le tarif total par ligne et le total général sont calculés automatiquement.</div>
       <div className="overflow-x-auto -mx-1 px-1">
-      <table className="w-full text-sm min-w-[480px]">
+      <table className="w-full text-sm min-w-[640px]">
         <thead><tr style={{ borderBottom: `1px solid ${C.borderSoft}` }}>
-          <th className="text-left py-2 text-xs font-medium" style={{ color: C.inkSoft }}>Poste</th>
-          <th className="text-left py-2 text-xs font-medium w-40" style={{ color: C.inkSoft }}>Montant (CHF)</th>
-          <th className="text-left py-2 text-xs font-medium" style={{ color: C.inkSoft }}>Commentaire</th>
+          <th className="text-left py-2 text-xs font-medium w-36" style={{ color: C.inkSoft }}>Référence</th>
+          <th className="text-left py-2 text-xs font-medium" style={{ color: C.inkSoft }}>Intitulé de la ligne</th>
+          <th className="text-left py-2 text-xs font-medium w-24" style={{ color: C.inkSoft }}>Quantité</th>
+          <th className="text-left py-2 text-xs font-medium w-32" style={{ color: C.inkSoft }}>Tarif unitaire (CHF)</th>
+          <th className="text-right py-2 text-xs font-medium w-32" style={{ color: C.inkSoft }}>Tarif total (CHF)</th>
           <th className="w-8"></th>
         </tr></thead>
         <tbody>
           {rows.map((r, i) => (
             <tr key={i} style={{ borderBottom: `1px solid ${C.borderSoft}` }}>
-              <td className="py-1.5 pr-2"><input value={r.poste} onChange={e => updateCell(i, "poste", e.target.value)} className="w-full px-2 py-1.5 rounded text-sm outline-none" style={{ border: `1px solid ${C.border}` }} /></td>
-              <td className="py-1.5 pr-2"><input value={r.montant} onChange={e => updateCell(i, "montant", e.target.value)} className="w-full px-2 py-1.5 rounded text-sm outline-none" style={{ border: `1px solid ${C.border}` }} /></td>
-              <td className="py-1.5 pr-2"><input value={r.commentaire} onChange={e => updateCell(i, "commentaire", e.target.value)} className="w-full px-2 py-1.5 rounded text-sm outline-none" style={{ border: `1px solid ${C.border}` }} /></td>
+              <td className="py-1.5 pr-2"><input value={r.ref} onChange={e => updateCell(i, "ref", e.target.value)} className="w-full px-2 py-1.5 rounded text-sm outline-none" style={{ border: `1px solid ${C.border}` }} /></td>
+              <td className="py-1.5 pr-2"><input value={r.label} onChange={e => updateCell(i, "label", e.target.value)} className="w-full px-2 py-1.5 rounded text-sm outline-none" style={{ border: `1px solid ${C.border}` }} /></td>
+              <td className="py-1.5 pr-2"><input type="number" value={r.quantity} onChange={e => updateCell(i, "quantity", e.target.value)} className="w-full px-2 py-1.5 rounded text-sm outline-none" style={{ border: `1px solid ${C.border}` }} /></td>
+              <td className="py-1.5 pr-2"><input type="number" value={r.unitPrice} onChange={e => updateCell(i, "unitPrice", e.target.value)} className="w-full px-2 py-1.5 rounded text-sm outline-none" style={{ border: `1px solid ${C.border}` }} /></td>
+              <td className="py-1.5 pr-2 text-right tabular-nums" style={{ color: C.inkSoft }}>{chf(lineTotal(r))}</td>
               <td className="py-1.5"><button onClick={() => removeRow(i)}><Trash2 size={14} style={{ color: C.red }} /></button></td>
             </tr>
           ))}
         </tbody>
+        <tfoot><tr>
+          <td colSpan={4} className="py-2.5 pr-2 text-sm font-semibold text-right" style={{ color: C.ink }}>Total</td>
+          <td className="py-2.5 pr-2 text-sm font-semibold text-right tabular-nums" style={{ color: C.ink }}>{chf(grandTotal)}</td>
+          <td></td>
+        </tr></tfoot>
       </table>
       </div>
       <div className="flex justify-end mt-5"><PrimaryButton icon={Download} onClick={() => onGenerate()}>Générer le document (Excel)</PrimaryButton></div>
