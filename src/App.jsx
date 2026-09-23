@@ -2085,8 +2085,48 @@ function NeedTab({ t, updateTender }) {
   function setScope(key, text) { updateTender(prev => ({ ...prev, scope: { ...prev.scope, [key]: text.split("\n").map(s => s.trim()).filter(Boolean) } })); }
   const inputStyle = { border: `1px solid ${C.border}` };
 
+  const [rawNeed, setRawNeed] = useState(t.need.context || "");
+  const [loadingAI, setLoadingAI] = useState(false);
+  const [aiError, setAiError] = useState("");
+
+  async function structureNeed() {
+    if (!rawNeed.trim()) return;
+    setLoadingAI(true); setAiError("");
+    try {
+      const prompt = `Tu es un assistant Achats. ` +
+        `À partir de la description libre d'un besoin d'achat ci-dessous, produis UNIQUEMENT un objet JSON valide, sans balises markdown ni texte autour, avec exactement ces clés : ` +
+        `"contexte" (string), "problematique" (string), "objectifs" (array de strings courtes), "perimetre" (array de strings courtes), ` +
+        `"contraintes" (array de strings courtes). ` +
+        `Reste générique et n'invente aucune règle juridique ou procédure interne spécifique. Description du besoin : """${rawNeed}"""`;
+      const structured = await callClaudeJSON(prompt, 3000);
+      updateTender(prev => ({
+        ...prev,
+        need: {
+          ...prev.need,
+          context: structured.contexte || prev.need.context,
+          problem: structured.problematique || prev.need.problem,
+          objectives: (structured.objectifs || []).join(" · ") || prev.need.objectives,
+          constraints: (structured.contraintes || []).join(" · ") || prev.need.constraints,
+        },
+        scope: { ...prev.scope, included: structured.perimetre?.length ? structured.perimetre : prev.scope.included },
+      }));
+    } catch (e) {
+      setAiError(`La structuration automatique a échoué (${e.message || "erreur inconnue"}). Vous pouvez compléter les champs manuellement.`);
+    } finally { setLoadingAI(false); }
+  }
+
   return (
     <div className="space-y-6">
+      <Card className="p-6">
+        <SectionTitle sub="Décrivez librement le besoin, puis laissez l'assistant préremplir le contexte, la problématique, les objectifs, les contraintes et le périmètre inclus ci-dessous.">Structurer le besoin avec l'assistant</SectionTitle>
+        <textarea value={rawNeed} onChange={e => setRawNeed(e.target.value)} rows={4} placeholder="Ex. « Nous voulons remplacer notre outil actuel de gestion des postes et améliorer le patching. »" className="w-full px-3 py-2.5 rounded text-sm outline-none resize-none" style={inputStyle} />
+        <div className="flex items-center gap-3 mt-3">
+          <button onClick={structureNeed} disabled={!rawNeed.trim() || loadingAI} className="flex items-center gap-2 px-3.5 py-2 rounded text-sm font-medium disabled:opacity-40" style={{ border: `1px solid ${C.accent}`, color: C.accentDark, backgroundColor: C.accentSoft }}>
+            <Sparkles size={14} /> {loadingAI ? "Structuration en cours…" : "Structurer le besoin (IA)"}
+          </button>
+          {aiError && <span className="text-xs" style={{ color: C.red }}>{aiError}</span>}
+        </div>
+      </Card>
       <Card className="p-6">
         <SectionTitle sub="Ces informations alimentent automatiquement le Cahier des charges.">Besoin</SectionTitle>
         <div className="space-y-4">
