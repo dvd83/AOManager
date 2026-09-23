@@ -1671,6 +1671,9 @@ function NewTenderWizard({ onCreate, onCancel }) {
 
   function set(field, value) { setForm(f => ({ ...f, [field]: value })); }
 
+  const step1Missing = ["title", "object", "direction", "responsibleMetier", "buyer"].filter(f => !form[f]?.trim());
+  const step1Valid = step1Missing.length === 0;
+
   async function structureNeed() {
     if (!rawNeed.trim()) return;
     setLoadingAI(true); setAiError(""); setStructured(null);
@@ -1748,7 +1751,7 @@ function NewTenderWizard({ onCreate, onCancel }) {
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             {[["reference", "Référence AO"], ["title", "Titre"], ["object", "Objet"], ["direction", "Direction"], ["service", "Service"], ["responsibleMetier", "Responsable métier"], ["buyer", "Acheteur"], ["sponsor", "Sponsor"], ["budget", "Budget estimatif (CHF)"], ["dateLaunch", "Date souhaitée de lancement"], ["dateClose", "Date souhaitée de clôture"], ["dateDecision", "Date souhaitée de décision"]].map(([field, label]) => (
               <label key={field} className="text-sm">
-                <div className="mb-1" style={{ color: C.inkSoft }}>{label}</div>
+                <div className="mb-1" style={{ color: C.inkSoft }}>{label}{["title", "object", "direction", "responsibleMetier", "buyer"].includes(field) && <span style={{ color: C.accent }}> *</span>}</div>
                 <input value={form[field]} onChange={e => set(field, e.target.value)} type={field.startsWith("date") ? "date" : field === "budget" ? "number" : "text"} className="w-full px-3 py-2 rounded text-sm outline-none" style={inputStyle} />
               </label>
             ))}
@@ -1785,7 +1788,10 @@ function NewTenderWizard({ onCreate, onCancel }) {
             );
           })()}
 
-          <div className="flex justify-end mt-6"><PrimaryButton onClick={() => setStep(2)}>Continuer</PrimaryButton></div>
+          <div className="flex items-center justify-end gap-3 mt-6">
+            {!step1Valid && <span className="text-xs" style={{ color: C.inkSoft }}>Champs requis : Titre, Objet, Direction, Responsable métier, Acheteur</span>}
+            <PrimaryButton onClick={() => setStep(2)} disabled={!step1Valid}>Continuer</PrimaryButton>
+          </div>
         </Card>
       )}
 
