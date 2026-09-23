@@ -785,15 +785,19 @@ function para(text, { align, spacingAfter = 160, spacingBefore = 0, shade, ...ru
   const shd = shade ? `<w:shd w:val="clear" w:fill="${shade}"/>` : "";
   return `<w:p><w:pPr><w:spacing w:before="${spacingBefore}" w:after="${spacingAfter}"/>${jc}${shd}</w:pPr>${runsForText(text, runOpts)}</w:p>`;
 }
+// Palette du template Word — identique à celle des classeurs Excel générés (marine + orange),
+// pour une identité visuelle cohérente sur tous les documents produits par l'app.
+const DOCX_NAVY = "182234", DOCX_ORANGE = "FD5312", DOCX_ORANGE_SOFT = "FFEDE4", DOCX_GRAY_SOFT = "EEEDE7", DOCX_BORDER = "D9D9D9", DOCX_INK_SOFT = "4B5872";
 let __bookmarkSeq = 0;
 function heading(text, level = 1, bookmarkId) {
-  const sizes = { 1: 30, 2: 25, 3: 22 };
+  const sizes = { 1: 30, 2: 24, 3: 21 };
   let bm = "";
   if (bookmarkId) {
     __bookmarkSeq++;
     bm = `<w:bookmarkStart w:id="${__bookmarkSeq}" w:name="${bookmarkId}"/><w:bookmarkEnd w:id="${__bookmarkSeq}"/>`;
   }
-  return `<w:p><w:pPr><w:spacing w:before="240" w:after="120"/></w:pPr>${bm}<w:r><w:rPr><w:b/><w:sz w:val="${sizes[level] || 26}"/><w:szCs w:val="${sizes[level] || 26}"/><w:color w:val="1F3864"/></w:rPr><w:t xml:space="preserve">${xmlEscape(text)}</w:t></w:r></w:p>`;
+  const border = level === 1 ? `<w:pBdr><w:bottom w:val="single" w:sz="10" w:space="6" w:color="${DOCX_ORANGE}"/></w:pBdr>` : "";
+  return `<w:p><w:pPr><w:spacing w:before="320" w:after="160"/><w:keepNext/>${border}</w:pPr>${bm}<w:r><w:rPr><w:b/><w:sz w:val="${sizes[level] || 26}"/><w:szCs w:val="${sizes[level] || 26}"/><w:color w:val="${DOCX_NAVY}"/></w:rPr><w:t xml:space="preserve">${xmlEscape(text)}</w:t></w:r></w:p>`;
 }
 // Entrée de table des matières cliquable, pointant vers le signet (bookmark) posé par heading().
 function tocLink(text, bookmarkId, level = 1) {
@@ -814,18 +818,19 @@ function docTable(headerCells, rows) {
   const totalWidth = 9020;
   const colWidth = Math.floor(totalWidth / cols);
   const grid = Array(cols).fill(0).map(() => `<w:gridCol w:w="${colWidth}"/>`).join("");
-  const borders = `<w:tblBorders><w:top w:val="single" w:sz="4" w:color="BFBFBF"/><w:left w:val="single" w:sz="4" w:color="BFBFBF"/><w:bottom w:val="single" w:sz="4" w:color="BFBFBF"/><w:right w:val="single" w:sz="4" w:color="BFBFBF"/><w:insideH w:val="single" w:sz="4" w:color="BFBFBF"/><w:insideV w:val="single" w:sz="4" w:color="BFBFBF"/></w:tblBorders>`;
+  const borders = `<w:tblBorders><w:top w:val="single" w:sz="4" w:color="${DOCX_BORDER}"/><w:left w:val="single" w:sz="4" w:color="${DOCX_BORDER}"/><w:bottom w:val="single" w:sz="4" w:color="${DOCX_BORDER}"/><w:right w:val="single" w:sz="4" w:color="${DOCX_BORDER}"/><w:insideH w:val="single" w:sz="4" w:color="${DOCX_BORDER}"/><w:insideV w:val="single" w:sz="4" w:color="${DOCX_BORDER}"/></w:tblBorders>`;
   function cell(text, opts = {}) {
     const shd = opts.shade ? `<w:shd w:val="clear" w:fill="${opts.shade}"/>` : "";
-    return `<w:tc><w:tcPr><w:tcW w:w="${colWidth}" w:type="dxa"/>${shd}</w:tcPr><w:p>${runsForText(text, { bold: opts.bold, size: 18 })}</w:p></w:tc>`;
+    return `<w:tc><w:tcPr><w:tcW w:w="${colWidth}" w:type="dxa"/>${shd}<w:vAlign w:val="center"/></w:tcPr><w:p>${runsForText(text, { bold: opts.bold, size: 18, color: opts.color })}</w:p></w:tc>`;
   }
-  const headerRow = headerCells.some(h => h) ? `<w:tr>${headerCells.map(h => cell(h, { bold: true, shade: "F2F2F2" })).join("")}</w:tr>` : "";
-  const dataRows = rows.map(r => `<w:tr>${r.map(v => cell(v)).join("")}</w:tr>`).join("");
-  return `<w:tbl><w:tblPr><w:tblW w:w="${totalWidth}" w:type="dxa"/>${borders}</w:tblPr><w:tblGrid>${grid}</w:tblGrid>${headerRow}${dataRows}</w:tbl><w:p/>`;
+  const headerTrPr = headerCells.some(h => h) ? `<w:trPr><w:tblHeader/></w:trPr>` : "";
+  const headerTr = headerCells.some(h => h) ? `<w:tr>${headerTrPr}${headerCells.map(h => cell(h, { bold: true, shade: DOCX_ORANGE, color: "FFFFFF" })).join("")}</w:tr>` : "";
+  const dataRows = rows.map((r, i) => `<w:tr>${r.map(v => cell(v, i % 2 === 1 ? { shade: "FBFAF8" } : {})).join("")}</w:tr>`).join("");
+  return `<w:tbl><w:tblPr><w:tblW w:w="${totalWidth}" w:type="dxa"/>${borders}</w:tblPr><w:tblGrid>${grid}</w:tblGrid>${headerTr}${dataRows}</w:tbl><w:p/>`;
 }
-function shadedBox(lines, fill = "E8E8E8") {
-  const content = lines.map(l => para(l.text, { align: "center", bold: l.bold, italic: l.italic, size: l.size || 20, spacingAfter: 40 })).join("");
-  return `<w:tbl><w:tblPr><w:tblW w:w="9020" w:type="dxa"/><w:tblBorders><w:top w:val="single" w:sz="4" w:color="000000"/><w:left w:val="single" w:sz="4" w:color="000000"/><w:bottom w:val="single" w:sz="4" w:color="000000"/><w:right w:val="single" w:sz="4" w:color="000000"/></w:tblBorders></w:tblPr><w:tblGrid><w:gridCol w:w="9020"/></w:tblGrid><w:tr><w:tc><w:tcPr><w:tcW w:w="9020" w:type="dxa"/><w:shd w:val="clear" w:fill="${fill}"/></w:tcPr>${content}</w:tc></w:tr></w:tbl><w:p/>`;
+function shadedBox(lines, fill = DOCX_GRAY_SOFT) {
+  const content = lines.map(l => para(l.text, { align: "center", bold: l.bold, italic: l.italic, size: l.size || 20, spacingAfter: 40, color: l.bold ? DOCX_NAVY : undefined })).join("");
+  return `<w:tbl><w:tblPr><w:tblW w:w="9020" w:type="dxa"/><w:tblBorders><w:top w:val="single" w:sz="6" w:color="${DOCX_NAVY}"/><w:left w:val="single" w:sz="6" w:color="${DOCX_NAVY}"/><w:bottom w:val="single" w:sz="6" w:color="${DOCX_NAVY}"/><w:right w:val="single" w:sz="6" w:color="${DOCX_NAVY}"/></w:tblBorders></w:tblPr><w:tblGrid><w:gridCol w:w="9020"/></w:tblGrid><w:tr><w:tc><w:tcPr><w:tcW w:w="9020" w:type="dxa"/><w:shd w:val="clear" w:fill="${fill}"/></w:tcPr>${content}</w:tc></w:tr></w:tbl><w:p/>`;
 }
 function imageParagraph(cx, cy, align = "left") {
   const jc = align ? `<w:jc w:val="${align}"/>` : "";
@@ -834,17 +839,17 @@ function imageParagraph(cx, cy, align = "left") {
 
 function coverBlockXml(tender, docTypeLabel) {
   let x = "";
-  x += para("APPEL D'OFFRES", { bold: true, size: 22, color: "1F3864", spacingAfter: 400 });
-  x += para(`AO – ${tender.title}`, { align: "center", bold: true, size: 32, color: "1F3864", spacingAfter: 80 });
-  x += para("Appel d'offre", { align: "center", size: 24, spacingAfter: 20 });
-  x += para(docTypeLabel, { align: "center", size: 24, spacingAfter: 400 });
+  x += `<w:p><w:pPr><w:spacing w:before="0" w:after="200"/><w:pBdr><w:bottom w:val="single" w:sz="14" w:space="8" w:color="${DOCX_ORANGE}"/></w:pBdr></w:pPr><w:r><w:rPr><w:b/><w:sz w:val="22"/><w:szCs w:val="22"/><w:color w:val="${DOCX_ORANGE}"/></w:rPr><w:t xml:space="preserve">APPEL D'OFFRES</w:t></w:r></w:p>`;
+  x += para(`AO – ${tender.title}`, { align: "center", bold: true, size: 34, color: DOCX_NAVY, spacingAfter: 80, spacingBefore: 400 });
+  x += para("Appel d'offre", { align: "center", size: 22, color: DOCX_INK_SOFT, spacingAfter: 20 });
+  x += para(docTypeLabel, { align: "center", bold: true, size: 24, color: DOCX_ORANGE, spacingAfter: 500 });
   x += shadedBox([
     { text: "Soumissionnaire", bold: true, size: 20 },
     { text: "Raison sociale – Adresse – Timbre", size: 18 },
     { text: "(Date et signature : dernière page)", italic: true, size: 16 },
   ]);
   x += para("", { spacingAfter: 2000 });
-  x += para("Ce document est confidentiel. Il est fourni sous la condition qu'il ne soit ni reproduit, ni copié, ni prêté ou divulgué, directement ou indirectement, sans autorisation.", { italic: true, size: 16, color: "595959", shade: "E8E8E8" });
+  x += para("Ce document est confidentiel. Il est fourni sous la condition qu'il ne soit ni reproduit, ni copié, ni prêté ou divulgué, directement ou indirectement, sans autorisation.", { italic: true, size: 16, color: DOCX_INK_SOFT, shade: DOCX_GRAY_SOFT });
   x += pageBreak();
   return x;
 }
@@ -864,8 +869,8 @@ function metaAndHistoryXml(tender) {
 // Table label/valeur (2 colonnes, sans en-tête) — utilisée pour les fiches d'exigence.
 function labelValueTable(rows) {
   const totalWidth = 9020, c1 = Math.floor(totalWidth * 0.35), c2 = totalWidth - c1;
-  const borders = `<w:tblBorders><w:top w:val="single" w:sz="4" w:color="BFBFBF"/><w:left w:val="single" w:sz="4" w:color="BFBFBF"/><w:bottom w:val="single" w:sz="4" w:color="BFBFBF"/><w:right w:val="single" w:sz="4" w:color="BFBFBF"/><w:insideH w:val="single" w:sz="4" w:color="BFBFBF"/><w:insideV w:val="single" w:sz="4" w:color="BFBFBF"/></w:tblBorders>`;
-  const trs = rows.map(([label, value]) => `<w:tr><w:tc><w:tcPr><w:tcW w:w="${c1}" w:type="dxa"/><w:shd w:val="clear" w:fill="F7F7F7"/></w:tcPr><w:p>${runsForText(label, { bold: true, size: 18 })}</w:p></w:tc><w:tc><w:tcPr><w:tcW w:w="${c2}" w:type="dxa"/></w:tcPr><w:p>${runsForText(value, { size: 18 })}</w:p></w:tc></w:tr>`).join("");
+  const borders = `<w:tblBorders><w:top w:val="single" w:sz="4" w:color="${DOCX_BORDER}"/><w:left w:val="single" w:sz="4" w:color="${DOCX_BORDER}"/><w:bottom w:val="single" w:sz="4" w:color="${DOCX_BORDER}"/><w:right w:val="single" w:sz="4" w:color="${DOCX_BORDER}"/><w:insideH w:val="single" w:sz="4" w:color="${DOCX_BORDER}"/><w:insideV w:val="single" w:sz="4" w:color="${DOCX_BORDER}"/></w:tblBorders>`;
+  const trs = rows.map(([label, value]) => `<w:tr><w:tc><w:tcPr><w:tcW w:w="${c1}" w:type="dxa"/><w:shd w:val="clear" w:fill="${DOCX_GRAY_SOFT}"/><w:vAlign w:val="center"/></w:tcPr><w:p>${runsForText(label, { bold: true, size: 18, color: DOCX_NAVY })}</w:p></w:tc><w:tc><w:tcPr><w:tcW w:w="${c2}" w:type="dxa"/><w:vAlign w:val="center"/></w:tcPr><w:p>${runsForText(value, { size: 18 })}</w:p></w:tc></w:tr>`).join("");
   return `<w:tbl><w:tblPr><w:tblW w:w="${totalWidth}" w:type="dxa"/>${borders}</w:tblPr><w:tblGrid><w:gridCol w:w="${c1}"/><w:gridCol w:w="${c2}"/></w:tblGrid>${trs}</w:tbl><w:p/>`;
 }
 
@@ -955,9 +960,9 @@ function generateDocumentFile(tender, doc) {
       styles.push({ row: out.length - 1, cols: [0, 1, 2, 3, 4], style: XLS_STYLE.data });
     });
     const lastRow = out.length;
-    out.push(["", "Total", "", "", null]);
+    out.push(["", "Total", "", "", rows.length ? null : 0]);
     styles.push({ row: out.length - 1, cols: [0, 1, 2, 3, 4], style: XLS_STYLE.total });
-    formulas.push({ ref: `E${out.length}`, f: `SUM(E${firstRow}:E${lastRow})` });
+    if (rows.length) formulas.push({ ref: `E${out.length}`, f: `SUM(E${firstRow}:E${lastRow})` });
     out.push([]);
     out.push(["Remarque : le total est à reporter dans le document récapitulatif de l'offre. Toutes les positions doivent être complétées — aucun prix à 0 ne peut être accepté."]);
     styles.push({ row: out.length - 1, cols: [0], style: XLS_STYLE.subtitle });
@@ -984,7 +989,7 @@ function generateDocumentFile(tender, doc) {
   }
 
   let body = coverBlockXml(tender, doc.name);
-  body += para("TABLE DES MATIÈRES", { align: "center", bold: true, italic: true, spacingAfter: 200 });
+  body += para("TABLE DES MATIÈRES", { align: "center", bold: true, size: 24, color: DOCX_NAVY, spacingAfter: 240 });
   schema.forEach(s => { body += para(s.label, { spacingAfter: 60 }); });
   body += pageBreak();
   body += metaAndHistoryXml(tender);
@@ -1218,7 +1223,7 @@ function buildProcedureAOBody(tender, schema, values) {
 }
 
 function tocBlockXml(entries) {
-  let x = para("TABLE DES MATIÈRES", { align: "center", bold: true, italic: true, spacingAfter: 200 });
+  let x = para("TABLE DES MATIÈRES", { align: "center", bold: true, size: 24, color: DOCX_NAVY, spacingAfter: 240 });
   entries.forEach(e => { x += tocLink(e.text, e.id, e.level); });
   return x;
 }
