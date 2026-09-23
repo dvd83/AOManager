@@ -149,6 +149,9 @@ function procedureHelpText(label) {
 const TABLE_DOC_NAMES = ["Série de prix"];
 const AUTO_TABLE_DOC_NAMES = ["Cahier de réponses"];
 const QUESTIONS_DOC_NAMES = ["Annexe A - Compréhension des besoins"];
+// Formulaire K2 du Guide romand pour l'invitation à soumissionner et l'adjudication de marchés
+// publics (procédure ouverte) — cf. www.vd.ch/etat-droit-finances/marches-publics/guide-romand.
+const K2_DOC_NAME = "K2 - Dossier d'appel d'offres (procédure ouverte)";
 
 // Placeholders obligatoires — jamais d'invention : toute information non fournie explicitement doit rester visible comme telle.
 const A_COMPLETER = "[À COMPLÉTER PAR ACHATS]";
@@ -987,6 +990,10 @@ function generateDocumentFile(tender, doc) {
     packageDocx(buildCahierDesChargesBody(tender, schema, values), `${tender.reference}_${slug(doc.name)}.docx`, tender);
     return;
   }
+  if (doc.name === K2_DOC_NAME) {
+    packageDocx(buildK2Body(tender), `${tender.reference}_K2.docx`, tender);
+    return;
+  }
 
   let body = coverBlockXml(tender, doc.name);
   body += para("TABLE DES MATIÈRES", { align: "center", bold: true, size: 24, color: DOCX_NAVY, spacingAfter: 240 });
@@ -1216,6 +1223,159 @@ function buildProcedureAOBody(tender, schema, values) {
   c.raw(docTable(["Terme", "Définition"], GLOSSARY_TERMS));
 
   let out = coverBlockXml(tender, "Procédure AO");
+  out += tocBlockXml(c.toc());
+  out += pageBreak();
+  out += c.body();
+  return out;
+}
+
+// Assemble le formulaire K2 du Guide romand pour l'invitation à soumissionner et l'adjudication de
+// marchés publics (Etat de Vaud et cantons romands, www.simap.ch) — "Dossier d'appel d'offres
+// (procédure ouverte)". Structure et numérotation des chapitres calquées sur l'Annexe K2 officielle
+// (11 chapitres), condensées pour un marché de services informatiques (les rubriques propres aux
+// marchés de travaux de construction — codes CFC/CAN, organigramme de chantier, badge du personnel
+// de chantier, entreprise générale/totale — sont omises). Comme pour les autres documents générés,
+// aucune donnée contractuelle ou réglementaire propre à l'adjudicateur n'est inventée : ce qui n'est
+// pas saisi dans l'AO reste affiché comme [À COMPLÉTER PAR ACHATS] / [À VALIDER PAR ACHATS].
+function buildK2Body(tender) {
+  const t = tender;
+  const c = makeChapterBuilder();
+
+  c.H("1. Pouvoir adjudicateur", 1, "b_k2_1");
+  c.H("1.1. Nom et adresse de l'adjudicateur", 2, "b_k2_11");
+  c.H("1.1.1. Pouvoir adjudicateur", 3, "b_k2_111");
+  c.raw(docTable(["Champ", "Valeur"], [
+    ["Direction / Service", [t.direction, t.service].filter(Boolean).join(" — ") || A_COMPLETER],
+    ["Sponsor", t.sponsor || A_COMPLETER],
+  ]));
+  c.H("1.1.2. Organisateur de la procédure", 3, "b_k2_112");
+  c.raw(docTable(["Champ", "Valeur"], [
+    ["Acheteur en charge de la procédure", t.buyer || A_COMPLETER],
+    ["Responsable métier", t.responsibleMetier || A_COMPLETER],
+  ]));
+
+  c.H("2. Objet du marché", 1, "b_k2_2");
+  c.H("2.1. Objet et étendue du marché", 2, "b_k2_21");
+  c.raw(para(t.object || A_COMPLETER));
+  c.H("2.2. Titre du projet", 2, "b_k2_22");
+  c.raw(para(t.title || A_COMPLETER));
+  c.H("2.3. Référence/numéro du projet", 2, "b_k2_23");
+  c.raw(para(t.reference));
+  c.H("2.4. Vocabulaire commun des marchés publics (CPV)", 2, "b_k2_24");
+  c.raw(para(A_COMPLETER));
+  c.H("2.5. Pour les marchés de services — Classification centrale de produits (CPC)", 2, "b_k2_25");
+  c.raw(para(A_COMPLETER));
+  c.H("2.6. Description du marché", 2, "b_k2_26");
+  c.H("2.6.1. Nature et importance", 3, "b_k2_261");
+  c.raw(para(t.need?.context || A_COMPLETER));
+  c.H("2.6.2. Étapes de réalisation", 3, "b_k2_262");
+  c.raw(para(t.need?.objectives || A_COMPLETER));
+  c.H("2.6.3. Lieu d'exécution du marché", 3, "b_k2_263");
+  c.raw(para(A_COMPLETER));
+
+  c.H("3. Calendrier prévisionnel de la procédure", 1, "b_k2_3");
+  c.raw(docTable(["Étape", "Date"], [
+    ["Publication de l'appel d'offres", t.dateLaunch || A_COMPLETER],
+    ["Délai pour poser des questions", A_COMPLETER],
+    ["Délai pour la remise des offres", t.dateClose || A_COMPLETER],
+    ["Ouverture des offres", A_COMPLETER],
+    ["Décision d'adjudication", t.dateDecision || A_COMPLETER],
+    ["Délai de recours", A_COMPLETER],
+    ["Début du marché", A_COMPLETER],
+  ]));
+
+  c.H("4. Bases légales", 1, "b_k2_4");
+  c.raw(para("Le marché est :"));
+  c.raw(para(`☐ soumis   ☐ non soumis   aux Accords internationaux (AMP 2012 et Accord bilatéral entre la Suisse et l'Union européenne) ;\n☐ soumis à l'Accord intercantonal sur les marchés publics (AIMP 2019) ;\n☐ soumis à la législation cantonale sur les marchés publics.`));
+
+  c.H("5. Conditions de participation", 1, "b_k2_5");
+  c.H("5.1. Rappel des obligations et contrôles", 2, "b_k2_51");
+  c.raw(para("Pour participer à la procédure, le soumissionnaire (et ses sous-traitants éventuels) doit (doivent) respecter, conformément à l'art. 12 AIMP 2019, les dispositions relatives à la protection des travailleurs et aux conditions de travail en vigueur, les obligations d'annonce et d'autorisation relatives au travail au noir, les dispositions relatives à l'égalité de traitement salarial entre femmes et hommes, les conventions fondamentales de l'Organisation internationale du travail (OIT) en cas de prestations exécutées à l'étranger, ainsi que les dispositions légales en matière de protection de l'environnement. Le soumissionnaire (et ses sous-traitants éventuels) doit en outre être à jour dans le paiement des impôts et des cotisations sociales, et ne pas avoir conclu d'accords illicites affectant la concurrence (art. 26 al. 1 AIMP 2019)."));
+  c.H("5.2. Peines conventionnelles", 2, "b_k2_52");
+  c.raw(para(`L'adjudicateur inclura des peines conventionnelles dans le contrat à conclure avec le soumissionnaire retenu, pour le cas où ce dernier ou ses sous-traitants éventuels ne respecteraient pas leurs obligations : ☐ NON   ☐ OUI\nModalités (conditions, montants) : ${A_COMPLETER}`));
+
+  c.H("6. Critères d'aptitude", 1, "b_k2_6");
+  c.H("6.1. Critères d'aptitude, sous-critères et éléments d'appréciation", 2, "b_k2_61");
+  c.raw(para("Les critères d'aptitude, énoncés dans le tableau ci-après, sont évalués de manière binaire (critère rempli ou non rempli). Seront admis à l'évaluation des critères d'adjudication les soumissionnaires ayant rempli tous les critères d'aptitude."));
+  c.raw(docTable(["Critère d'aptitude", "Élément d'appréciation / justificatif demandé"], [
+    ["Capacité économique et financière", A_COMPLETER],
+    ["Capacité technique et professionnelle", A_COMPLETER],
+    ["Références pour des prestations comparables", A_COMPLETER],
+  ]));
+
+  c.H("7. Critères d'adjudication", 1, "b_k2_7");
+  c.H("7.1. Critères d'adjudication, sous-critères et éléments d'appréciation", 2, "b_k2_71");
+  c.raw(para("Pour déterminer l'offre économiquement la plus avantageuse (art. 41 AIMP 2019), l'adjudicateur prend en compte au moins deux critères, dont le prix et la qualité de l'offre. Les critères sont les suivants :"));
+  c.raw(docTable(["Critère", "Pondération", "Méthode de notation"], t.criteria.length
+    ? t.criteria.map(cr => [cr.name, `${cr.weight}%`, A_VALIDER])
+    : [["Prix", A_COMPLETER, A_COMPLETER], ["Qualité de l'offre", A_COMPLETER, A_COMPLETER]]));
+  c.H("7.2. Échelle de notes", 2, "b_k2_72");
+  c.raw(para("L'échelle de notes est de 0 à 5 (0 constituant la plus mauvaise note et 5 la meilleure note). Le critère prix est noté jusqu'au centième ; un critère ou sous-critère qualitatif est noté jusqu'à la demi-note."));
+  c.H("7.3. Notation des critères d'adjudication", 2, "b_k2_73");
+  c.H("7.3.1. Notation du critère qualité de l'offre", 3, "b_k2_731");
+  c.raw(para(A_COMPLETER));
+  c.H("7.3.2. Notation du critère prix", 3, "b_k2_732");
+  c.raw(para(`La notation du prix (montant TTC) sera effectuée selon la méthode de notation suivante (cf. annexe T2 du Guide romand) : ${A_COMPLETER}`));
+  c.H("7.4. Offres équivalentes", 2, "b_k2_74");
+  c.raw(para("Si des offres obtiennent exactement le même nombre de points, l'adjudicateur, pour les départager, favorisera le soumissionnaire ayant acquis la meilleure note sur le critère le plus fortement pondéré, et ainsi de suite de critère en critère du plus important au moins important."));
+
+  c.H("8. Exigences pour participer à la procédure d'adjudication", 1, "b_k2_8");
+  c.H("8.1. Délai pour la remise des offres", 2, "b_k2_81");
+  c.raw(para(`L'offre doit parvenir au plus tard le ${t.dateClose || A_COMPLETER}, à l'adresse ou via la plateforme indiquée par l'adjudicateur. Il appartient au soumissionnaire de tout mettre en œuvre pour respecter cette échéance ; les offres remises hors délai seront exclues de la procédure.`));
+  c.H("8.2. Présentation de l'offre", 2, "b_k2_82");
+  c.raw(para(`Le soumissionnaire doit déposer son offre : ☐ au format papier   ☐ au format électronique via la plateforme Simap.ch   ☐ au choix.\nNombre d'exemplaires (format papier) : ${A_COMPLETER}`));
+  c.H("8.3. Conditions de recevabilité de l'offre", 2, "b_k2_83");
+  c.raw(para(A_COMPLETER));
+  c.H("8.4. Langue", 2, "b_k2_84");
+  c.raw(para(A_VALIDER));
+  c.H("8.5. Confidentialité et propriété des documents et informations", 2, "b_k2_85");
+  c.raw(para("Les documents remis par l'adjudicateur et par le soumissionnaire dans le cadre de la présente procédure sont confidentiels et demeurent la propriété de leur auteur respectif ; ils ne peuvent être ni reproduits, ni communiqués à des tiers, sans autorisation préalable."));
+  c.H("8.6. Durée de validité de l'offre", 2, "b_k2_86");
+  c.raw(para(A_COMPLETER));
+  c.H("8.7. Taxe sur la valeur ajoutée", 2, "b_k2_87");
+  c.raw(para(A_VALIDER));
+
+  c.H("9. Procédure d'adjudication", 1, "b_k2_9");
+  c.H("9.1. Délai pour poser des questions", 2, "b_k2_91");
+  c.raw(para(A_COMPLETER));
+  c.H("9.2. Ouverture des offres", 2, "b_k2_92");
+  c.raw(para(A_COMPLETER));
+  c.H("9.3. Examen et évaluation des offres", 2, "b_k2_93");
+  c.raw(para("L'adjudicateur examine la recevabilité des offres, puis évalue les critères d'aptitude et les critères d'adjudication définis ci-avant."));
+  c.H("9.4. Décision d'adjudication", 2, "b_k2_94");
+  c.raw(para(`La décision d'adjudication est notifiée à l'ensemble des soumissionnaires. Date prévisionnelle : ${t.dateDecision || A_COMPLETER}.`));
+  c.H("9.5. Voies de recours", 2, "b_k2_95");
+  c.raw(para("La décision d'adjudication peut faire l'objet d'un recours dans le délai et selon les modalités indiquées dans la décision elle-même, conformément à la législation cantonale applicable."));
+
+  c.H("10. Engagement du soumissionnaire quant à la procédure", 1, "b_k2_10");
+  c.raw(para("En déposant son offre, le soumissionnaire s'engage à respecter les règles de la présente procédure et atteste l'exactitude des informations fournies."));
+
+  c.H("11. Engagement de l'adjudicateur quant à la procédure", 1, "b_k2_11e");
+  c.raw(para("L'adjudicateur s'engage à conduire la présente procédure conformément aux principes de transparence, d'égalité de traitement et de non-discrimination entre les soumissionnaires."));
+
+  c.raw(pageBreak());
+  c.H("Annexes à compléter", 1, "b_k2_annexes");
+  c.raw(para("Les annexes cochées ci-après font partie intégrante des documents d'appel d'offres et doivent être retournées complétées à l'adjudicateur dans le même délai que celui fixé pour la remise des offres."));
+  c.raw(docTable(["Annexe", "Objet"], [
+    ["P1", "Engagement sur l'honneur"],
+    ["P4", "Caractéristiques du soumissionnaire"],
+    ["P5", "Assurances et garanties"],
+    ["P6", "Engagement à respecter l'égalité entre femmes et hommes"],
+    ["P7", "Respect des conditions de travail internationales"],
+    ["P8", "Engagement sur l'honneur du sous-traitant"],
+    ["Q1", "Organisation qualité du soumissionnaire"],
+    ["Q2", "Organigramme structurel du soumissionnaire"],
+    ["Q4", "Capacité en personnel et formation des personnes-clés"],
+    ["Q7", "Liste de références de services (hors construction)"],
+    ["R1", "Montant de l'offre en rapport avec le cahier des charges"],
+    ["R6", "Moyens et ressources pour l'exécution du marché"],
+    ["R9", "Qualifications des personnes-clés désignées"],
+    ["R13", "Qualités et adéquation des solutions techniques proposées"],
+    ["R14", "Degré de compréhension du cahier des charges"],
+  ]));
+  c.raw(para("Documents remis à chaque soumissionnaire : le cahier des charges du marché, la série de prix, les conditions générales du contrat.\nAutres informations : www.simap.ch"));
+
+  let out = coverBlockXml(t, "K2 — Dossier d'appel d'offres (procédure ouverte)");
   out += tocBlockXml(c.toc());
   out += pageBreak();
   out += c.body();
@@ -1699,6 +1859,7 @@ function NewTenderWizard({ onCreate, onCancel }) {
       id: `t${Date.now()}`, ...form, status: "draft", need, scope, requirements, criteria: [], suppliers: [], needQuestions: [],
       documents: [
         { id: "d1", name: "Procédure AO", category: "Procédure", mandatory: true, owner: "Achats", status: "À préparer" },
+        { id: "d9", name: K2_DOC_NAME, category: "Procédure", mandatory: true, owner: "Achats", status: "À préparer" },
         { id: "d2", name: "Cahier des charges", category: "Technique", mandatory: true, owner: "Métier", status: "À préparer" },
         { id: "d3", name: "Cahier de réponses", category: "Technique", mandatory: true, owner: "Métier", status: "À préparer" },
         { id: "d7", name: "Série de prix", category: "Financier", mandatory: true, owner: "Achats", status: "À préparer" },
@@ -2199,6 +2360,17 @@ function AutoTablePreview({ doc, tender, onGenerate }) {
   );
 }
 
+function K2Preview({ doc, tender, onGenerate }) {
+  return (
+    <Card className="p-6 mt-3">
+      <div className="text-sm font-semibold mb-2" style={{ color: C.ink }}>{doc.name}</div>
+      <div className="text-sm mb-1" style={{ color: C.inkSoft }}>Formulaire officiel du Guide romand pour les marchés publics (procédure ouverte, www.simap.ch), généré automatiquement à partir des informations déjà saisies dans cet AO (identification, calendrier, critères). Les champs propres à l'adjudicateur non couverts par l'app restent affichés comme [À COMPLÉTER PAR ACHATS] / [À VALIDER PAR ACHATS] — à compléter directement dans le fichier Word généré.</div>
+      <div className="text-xs mt-2" style={{ color: C.inkSoft }}>Basé sur : direction/service, acheteur, responsable métier, objet, calendrier (lancement/clôture/décision), critères d'évaluation ({tender.criteria.length} défini(s)).</div>
+      <div className="flex justify-end mt-4"><PrimaryButton icon={Download} onClick={() => onGenerate()}>Générer le document (Word)</PrimaryButton></div>
+    </Card>
+  );
+}
+
 function DocumentsTab({ t, updateTender }) {
   const [openId, setOpenId] = useState(null);
 
@@ -2246,7 +2418,8 @@ function DocumentsTab({ t, updateTender }) {
       {openDoc && TABLE_DOC_NAMES.includes(openDoc.name) && <TableDocEditor doc={openDoc} onSave={c => setContent(openDoc.id, c)} onGenerate={() => handleGenerate(openDoc)} />}
       {openDoc && AUTO_TABLE_DOC_NAMES.includes(openDoc.name) && <AutoTablePreview doc={openDoc} tender={t} onGenerate={() => handleGenerate(openDoc)} />}
       {openDoc && QUESTIONS_DOC_NAMES.includes(openDoc.name) && <QuestionsDocEditor doc={openDoc} tender={t} updateTender={updateTender} onGenerate={() => handleGenerate(openDoc)} />}
-      {openDoc && !TABLE_DOC_NAMES.includes(openDoc.name) && !AUTO_TABLE_DOC_NAMES.includes(openDoc.name) && !QUESTIONS_DOC_NAMES.includes(openDoc.name) && <TextDocEditor doc={openDoc} tender={t} updateTender={updateTender} onSave={c => setContent(openDoc.id, c)} onGenerate={() => handleGenerate(openDoc)} />}
+      {openDoc && openDoc.name === K2_DOC_NAME && <K2Preview doc={openDoc} tender={t} onGenerate={() => handleGenerate(openDoc)} />}
+      {openDoc && !TABLE_DOC_NAMES.includes(openDoc.name) && !AUTO_TABLE_DOC_NAMES.includes(openDoc.name) && !QUESTIONS_DOC_NAMES.includes(openDoc.name) && openDoc.name !== K2_DOC_NAME && <TextDocEditor doc={openDoc} tender={t} updateTender={updateTender} onSave={c => setContent(openDoc.id, c)} onGenerate={() => handleGenerate(openDoc)} />}
     </div>
   );
 }
