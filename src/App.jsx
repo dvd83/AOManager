@@ -307,6 +307,15 @@ function priceScores(tender) {
   return out;
 }
 
+// Exigences (non éliminatoires, incluses au CDC) rattachées à un critère — même logique de
+// rapprochement par catégorie que la grille Excel du jury, réutilisée dans l'évaluation guidée.
+function requirementsForCriterion(tender, criterionName) {
+  const pool = tender.requirements.filter(r => r.criticality !== "Bloquante" && r.includeInCDC !== false);
+  const exact = pool.filter(r => r.category && r.category.trim().toLowerCase() === criterionName.trim().toLowerCase());
+  if (exact.length) return exact;
+  return pool.filter(r => r.category && (r.category.toLowerCase().includes(criterionName.toLowerCase()) || criterionName.toLowerCase().includes(r.category.toLowerCase())));
+}
+
 function criterionAverage(supplier, criterionId) {
   const notes = supplier.evaluations?.[criterionId];
   if (!notes || !notes.length) return null;
@@ -2379,8 +2388,30 @@ function SuppliersTab({ t, updateTender }) {
     updateTender(prev => ({ ...prev, suppliers: [...prev.suppliers, {
       id: `s${Date.now()}`, name: name.trim(), contact: (contact || "").trim(),
       documents: expectedDocs.length ? expectedDocs : [{ name: "Cahier de réponses", received: false }, { name: "Offre financière", received: false }],
-      price: { initial: 0, annual: 0, maintenance: 0, migration: 0 }, evaluations: {},
+      price: { initial: 0, annual: 0, maintenance: 0, migration: 0 }, evaluations: {}, files: [],
     }] }));
+  }
+  const [uploadingFor, setUploadingFor] = useState(null);
+  async function uploadFiles(supplierId, fileList) {
+    setUploadingFor(supplierId);
+    const newFiles = [];
+    for (const file of Array.from(fileList)) {
+      const path = `${t.id}/${supplierId}/${Date.now()}_${file.name}`;
+      const { error } = await supabase.storage.from("tender-files").upload(path, file);
+      if (!error) newFiles.push({ id: path, name: file.name, path, size: file.size, type: file.type, uploadedAt: new Date().toISOString() });
+    }
+    if (newFiles.length) {
+      updateTender(prev => ({ ...prev, suppliers: prev.suppliers.map(s => s.id !== supplierId ? s : { ...s, files: [...(s.files || []), ...newFiles] }) }));
+    }
+    setUploadingFor(null);
+  }
+  async function downloadFile(file) {
+    const { data, error } = await supabase.storage.from("tender-files").createSignedUrl(file.path, 60);
+    if (!error && data) window.open(data.signedUrl, "_blank");
+  }
+  async function removeFile(supplierId, file) {
+    await supabase.storage.from("tender-files").remove([file.path]);
+    updateTender(prev => ({ ...prev, suppliers: prev.suppliers.map(s => s.id !== supplierId ? s : { ...s, files: (s.files || []).filter(f => f.id !== file.id) }) }));
   }
   function addSupplier() {
     if (!form.name.trim()) return;
@@ -2485,6 +2516,29 @@ function SuppliersTab({ t, updateTender }) {
                   <input type="number" value={s.price[field] || ""} onChange={e => setPrice(s.id, field, e.target.value)} className="w-full px-2 py-1.5 rounded text-sm outline-none" style={inputStyle} /></label>
               ))}
             </div>
+            <div className="mt-4 pt-4" style={{ borderTop: `1px solid ${C.borderSoft}` }}>
+              <div className="flex items-center justify-between mb-2">
+                <div className="text-xs font-medium" style={{ color: C.inkSoft }}>Documents reçus de ce fournisseur ({(s.files || []).length})</div>
+                <label className="flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium cursor-pointer" style={{ border: `1px solid ${C.accent}`, color: C.accentDark, backgroundColor: C.accentSoft }}>
+                  <Upload size={12} /> {uploadingFor === s.id ? "Envoi…" : "Ajouter des fichiers"}
+                  <input type="file" multiple className="hidden" disabled={uploadingFor === s.id} onChange={e => { if (e.target.files.length) uploadFiles(s.id, e.target.files); e.target.value = ""; }} />
+                </label>
+              </div>
+              {(s.files || []).length === 0 ? (
+                <div className="text-xs" style={{ color: C.inkSoft }}>Aucun fichier — glissez-y les offres, annexes ou Excel reçus du fournisseur (Excel, Word, PDF…).</div>
+              ) : (
+                <div className="space-y-1.5">
+                  {s.files.map(f => (
+                    <div key={f.id} className="flex items-center gap-2 px-2.5 py-1.5 rounded text-xs" style={{ border: `1px solid ${C.borderSoft}` }}>
+                      <FileText size={13} style={{ color: C.inkSoft }} className="shrink-0" />
+                      <button onClick={() => downloadFile(f)} className="flex-1 min-w-0 text-left truncate hover:underline" style={{ color: C.ink }}>{f.name}</button>
+                      <span className="shrink-0" style={{ color: C.inkSoft }}>{f.size ? `${(f.size / 1024).toFixed(0)} ko` : ""}</span>
+                      <button onClick={() => removeFile(s.id, f)} className="shrink-0"><Trash2 size={12} style={{ color: C.red }} /></button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
           </Card>
         );
       })}
@@ -2492,10 +2546,125 @@ function SuppliersTab({ t, updateTender }) {
   );
 }
 
+/* --------------------------------- ÉVALUATION GUIDÉE (pas à pas) --------------------------------- */
+
+function GuidedEvaluation({ t, updateTender, evaluatorName, onExit }) {
+  const criteria = t.criteria.filter(c => c.name !== "Prix");
+  const [si, setSi] = useState(0);
+  const [ci, setCi] = useState(0);
+  const supplier = t.suppliers[si];
+  const criterion = criteria[ci];
+  const totalSteps = t.suppliers.length * criteria.length;
+  const stepNum = si * criteria.length + ci + 1;
+
+  const existing = supplier.evaluations[criterion.id]?.find(n => n.evaluator === evaluatorName);
+  const [note, setNote] = useState(existing?.note ?? null);
+  const [comment, setComment] = useState(existing?.comment ?? "");
+
+  useEffect(() => {
+    const en = supplier.evaluations[criterion.id]?.find(n => n.evaluator === evaluatorName);
+    setNote(en?.note ?? null);
+    setComment(en?.comment ?? "");
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [si, ci]);
+
+  function persist(nextNote, nextComment) {
+    updateTender(prev => ({ ...prev, suppliers: prev.suppliers.map(s => {
+      if (s.id !== supplier.id) return s;
+      const ex = s.evaluations[criterion.id] || [];
+      const idx = ex.findIndex(n => n.evaluator === evaluatorName);
+      const updated = idx >= 0 ? ex.map((n, i) => i === idx ? { ...n, note: nextNote, comment: nextComment } : n) : [...ex, { evaluator: evaluatorName, note: nextNote, comment: nextComment }];
+      return { ...s, evaluations: { ...s.evaluations, [criterion.id]: updated } };
+    }) }));
+  }
+  function pick(v) { setNote(v); persist(v, comment); }
+  function onCommentBlur() { if (note != null) persist(note, comment); }
+
+  function goNext() {
+    if (ci < criteria.length - 1) setCi(i => i + 1);
+    else if (si < t.suppliers.length - 1) { setSi(i => i + 1); setCi(0); }
+    else onExit();
+  }
+  function goPrev() {
+    if (ci > 0) setCi(i => i - 1);
+    else if (si > 0) { setSi(i => i - 1); setCi(criteria.length - 1); }
+  }
+
+  const reqs = requirementsForCriterion(t, criterion.name);
+  const files = supplier.files || [];
+  const isFirst = si === 0 && ci === 0;
+  const isLast = si === t.suppliers.length - 1 && ci === criteria.length - 1;
+
+  async function downloadFile(f) {
+    const { data, error } = await supabase.storage.from("tender-files").createSignedUrl(f.path, 60);
+    if (!error && data) window.open(data.signedUrl, "_blank");
+  }
+
+  return (
+    <Card className="p-6 ao-view-enter" key={`${si}-${ci}`}>
+      <div className="flex items-center justify-between mb-1">
+        <div className="text-xs font-medium" style={{ color: C.inkSoft }}>Étape {stepNum} / {totalSteps}</div>
+        <button onClick={onExit} className="text-xs font-medium" style={{ color: C.accentDark }}>Quitter le mode guidé</button>
+      </div>
+      <div className="w-full mb-5"><ProgressBar value={Math.round((stepNum / totalSteps) * 100)} /></div>
+
+      <div className="text-xs uppercase tracking-wider mb-1" style={{ color: C.inkSoft }}>{supplier.name}</div>
+      <div className="text-lg font-semibold mb-4" style={{ color: C.ink }}>{criterion.name} <span className="text-sm font-normal" style={{ color: C.inkSoft }}>· pondération {criterion.weight}%</span></div>
+
+      {reqs.length > 0 && (
+        <div className="mb-4 p-3 rounded" style={{ backgroundColor: C.slateSoft }}>
+          <div className="text-xs font-medium mb-1.5" style={{ color: C.inkSoft }}>Exigences liées</div>
+          <ul className="text-sm space-y-1" style={{ color: C.ink }}>
+            {reqs.map(r => <li key={r.id}>· {r.description}</li>)}
+          </ul>
+        </div>
+      )}
+
+      <div className="mb-5">
+        <div className="text-xs font-medium mb-1.5" style={{ color: C.inkSoft }}>Documents du fournisseur ({files.length})</div>
+        {files.length === 0 ? (
+          <div className="text-xs" style={{ color: C.inkSoft }}>Aucun document reçu de ce fournisseur.</div>
+        ) : (
+          <div className="flex flex-wrap gap-2">
+            {files.map(f => (
+              <button key={f.id} onClick={() => downloadFile(f)} className="flex items-center gap-1.5 px-2.5 py-1.5 rounded text-xs hover:bg-black/5" style={{ border: `1px solid ${C.border}`, color: C.ink }}>
+                <FileText size={12} style={{ color: C.inkSoft }} /> {f.name}
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
+
+      <div className="mb-4">
+        <div className="text-xs font-medium mb-2" style={{ color: C.inkSoft }}>Votre note (0 à 5)</div>
+        <div className="flex items-center gap-2">
+          {[0, 1, 2, 3, 4, 5].map(v => (
+            <button key={v} onClick={() => pick(v)} className="w-10 h-10 rounded-lg text-sm font-semibold transition-all"
+              style={note === v ? { backgroundColor: C.accent, color: "#fff", boxShadow: `0 0 0 3px ${C.accentSoft}` } : { border: `1px solid ${C.border}`, color: C.inkSoft, backgroundColor: C.surface }}>
+              {v}
+            </button>
+          ))}
+        </div>
+      </div>
+      <label className="block text-sm mb-6">
+        <div className="mb-1" style={{ color: C.inkSoft }}>Commentaire (optionnel)</div>
+        <textarea rows={3} value={comment} onChange={e => setComment(e.target.value)} onBlur={onCommentBlur} className="w-full px-3 py-2 rounded text-sm outline-none resize-none" style={{ border: `1px solid ${C.border}` }} />
+      </label>
+
+      <div className="flex items-center justify-between pt-4" style={{ borderTop: `1px solid ${C.borderSoft}` }}>
+        <button onClick={goPrev} disabled={isFirst} className="flex items-center gap-1.5 px-3.5 py-2 rounded text-sm disabled:opacity-30" style={{ color: C.inkSoft }}><ArrowLeft size={14} /> Précédent</button>
+        <PrimaryButton onClick={goNext} icon={isLast ? CheckCircle2 : ChevronRight}>{isLast ? "Terminer" : "Suivant"}</PrimaryButton>
+      </div>
+    </Card>
+  );
+}
+
 /* --------------------------------- ONGLET ÉVALUATION --------------------------------- */
 
-function EvaluationTab({ t, updateTender }) {
+function EvaluationTab({ t, updateTender, evaluatorName }) {
+  const [guided, setGuided] = useState(false);
   if (t.criteria.length === 0 || t.suppliers.length === 0) return <Card className="p-6 text-sm" style={{ color: C.inkSoft }}>Définissez d'abord les critères et les fournisseurs pour démarrer l'évaluation.</Card>;
+  if (guided) return <GuidedEvaluation t={t} updateTender={updateTender} evaluatorName={evaluatorName || "Vous"} onExit={() => setGuided(false)} />;
 
   function addNote(criterionId, supplierId, evaluator, note) {
     updateTender(prev => ({ ...prev, suppliers: prev.suppliers.map(s => {
@@ -2523,8 +2692,13 @@ function EvaluationTab({ t, updateTender }) {
 
   return (
     <div className="space-y-6">
-      <div className="text-sm px-4 py-3 rounded-lg" style={{ backgroundColor: C.slateSoft, color: C.inkSoft }}>
-        Notez chaque fournisseur de <strong>0</strong> (pas du tout conforme) à <strong>5</strong> (excellent) pour chaque critère. L'app calcule le score pondéré automatiquement — vous n'avez qu'à noter.
+      <div className="flex items-start justify-between gap-3 px-4 py-3 rounded-lg" style={{ backgroundColor: C.slateSoft, color: C.inkSoft }}>
+        <div className="text-sm">
+          Notez chaque fournisseur de <strong>0</strong> (pas du tout conforme) à <strong>5</strong> (excellent) pour chaque critère. L'app calcule le score pondéré automatiquement — vous n'avez qu'à noter.
+        </div>
+        <button onClick={() => setGuided(true)} className="flex items-center gap-1.5 px-3.5 py-2 rounded-full text-xs font-semibold text-white shrink-0" style={{ backgroundColor: C.accent }}>
+          <Sparkles size={13} /> Évaluation guidée
+        </button>
       </div>
       <Card className="p-4" style={{ backgroundColor: C.accentSoft, borderColor: C.accent }}>
         <div className="flex items-start justify-between gap-3">
@@ -2551,7 +2725,7 @@ function EvaluationTab({ t, updateTender }) {
                   <div className="text-xs font-medium mb-2 truncate" style={{ color: C.ink }}>{s.name}</div>
                   {notes.map((n, i) => <div key={i} className="flex items-center justify-between text-xs mb-1" style={{ color: C.inkSoft }}><span>{n.evaluator}</span><span className="font-semibold" style={{ color: C.ink }}>{n.note}/5</span></div>)}
                   {notes.length === 0 && <div className="text-xs mb-1" style={{ color: C.inkSoft }}>Pas encore noté</div>}
-                  <div className="flex items-center gap-1 mt-2">{[0, 1, 2, 3, 4, 5].map(v => <button key={v} onClick={() => addNote(c.id, s.id, "Vous", v)} className="w-6 h-6 rounded text-xs flex items-center justify-center" style={{ border: `1px solid ${C.border}`, backgroundColor: C.surface, color: C.inkSoft }}>{v}</button>)}</div>
+                  <div className="flex items-center gap-1 mt-2">{[0, 1, 2, 3, 4, 5].map(v => <button key={v} onClick={() => addNote(c.id, s.id, evaluatorName || "Vous", v)} className="w-6 h-6 rounded text-xs flex items-center justify-center" style={{ border: `1px solid ${C.border}`, backgroundColor: C.surface, color: C.inkSoft }}>{v}</button>)}</div>
                   {spread >= 3 && <div className="flex items-center gap-1 mt-2 text-xs" style={{ color: C.red }}><AlertTriangle size={12} /> Écart important entre évaluateurs</div>}
                   {avg != null && <div className="text-xs mt-2" style={{ color: C.inkSoft }}>Moyenne : {avg.toFixed(1)}/5</div>}
                 </div>
@@ -2755,7 +2929,7 @@ function GuidanceBanner({ tender, onJump }) {
   );
 }
 
-function TenderDetail({ tender, updateTender, back, onDelete, isAdmin }) {
+function TenderDetail({ tender, updateTender, back, onDelete, isAdmin, evaluatorName }) {
   const [tab, setTab] = useState("info");
   const [showCheck, setShowCheck] = useState(false);
   const [confirmingPublish, setConfirmingPublish] = useState(false);
@@ -2871,7 +3045,7 @@ function TenderDetail({ tender, updateTender, back, onDelete, isAdmin }) {
       {tab === "requirements" && <RequirementsTab t={tender} updateTender={updateTender} />}
       {tab === "criteria" && <CriteriaTab t={tender} updateTender={updateTender} />}
       {tab === "suppliers" && <SuppliersTab t={tender} updateTender={updateTender} />}
-      {tab === "evaluation" && <EvaluationTab t={tender} updateTender={updateTender} />}
+      {tab === "evaluation" && <EvaluationTab t={tender} updateTender={updateTender} evaluatorName={evaluatorName} />}
       {tab === "comparison" && <ComparisonTab t={tender} />}
       {tab === "synthesis" && <SynthesisTab t={tender} />}
       {tab === "history" && <HistoryTab t={tender} />}
@@ -3345,7 +3519,7 @@ export default function App() {
         <div key={view === "detail" ? `detail-${selectedId}` : view} className="ao-view-enter">
           {view === "dashboard" && <Dashboard tenders={tenders} openTender={openTender} goNew={() => setView("new")} onDelete={deleteTender} userEmail={session.user.email} firstName={profile?.first_name} isAdmin={isAdmin} />}
           {view === "new" && <NewTenderWizard onCreate={createTender} onCancel={() => setView("dashboard")} />}
-          {view === "detail" && selected && <TenderDetail tender={selected} updateTender={updateTender} back={() => setView("dashboard")} onDelete={deleteTender} isAdmin={isAdmin} />}
+          {view === "detail" && selected && <TenderDetail tender={selected} updateTender={updateTender} back={() => setView("dashboard")} onDelete={deleteTender} isAdmin={isAdmin} evaluatorName={(profile?.first_name && profile?.last_name) ? `${profile.first_name} ${profile.last_name}` : (profile?.first_name || session.user.email)} />}
           {view === "admin" && isAdmin && <AdminPanel currentUserId={session.user.id} />}
           {view === "suppliers-registry" && <SupplierRegistryPage isAdmin={isAdmin} />}
         </div>
