@@ -394,7 +394,7 @@ function buildEvaluationWorkbookSheets(tender) {
   const supplierSheetNames = {};
 
   tender.suppliers.forEach(supplier => {
-    const rows = []; const formulas = []; const styles = []; const merges = [];
+    const rows = []; const formulas = []; const styles = []; const merges = []; const noteRanges = [];
     rows.push([`ÉVALUATION - ${supplier.name}`]); merges.push({ r1: 0, c1: 0, r2: 0, c2: 3 }); styles.push({ row: 0, cols: [0, 1, 2, 3], style: XLS_STYLE.title });
     rows.push([]);
     rows.push(["Soumissionnaire :", supplier.name]); styles.push({ row: 2, cols: [0], style: XLS_STYLE.label });
@@ -413,6 +413,7 @@ function buildEvaluationWorkbookSheets(tender) {
       }
       for (let rr = startRow - 1; rr < rows.length; rr++) styles.push({ row: rr, cols: [0, 1, 2, 3], style: XLS_STYLE.data });
       const endRow = rows.length;
+      noteRanges.push(`C${startRow}:C${endRow}`);
       rows.push([null, "Moyenne catégorie", null, null]); styles.push({ row: rows.length - 1, cols: [0, 1, 2, 3], style: XLS_STYLE.total });
       const avgRow = rows.length;
       formulas.push({ ref: `C${avgRow}`, f: `IFERROR(AVERAGE(C${startRow}:C${endRow}),0)` });
@@ -447,7 +448,7 @@ function buildEvaluationWorkbookSheets(tender) {
 
     const sheetName = excelSheetName(`Éval. ${supplier.name}`);
     supplierSheetNames[supplier.id] = sheetName;
-    sheets.push({ name: sheetName, cols: [8, 55, 12, 12, 14], rows, formulas, styles, merges, rowHeights: [22] });
+    sheets.push({ name: sheetName, cols: [8, 55, 12, 12, 14], rows, formulas, styles, merges, rowHeights: [22], dataValidations: noteRanges.length ? [{ sqref: noteRanges.join(" "), list: ["0", "1", "2", "3", "4", "5"] }] : undefined });
   });
 
   // 5. Synthèse et classement
@@ -503,92 +504,107 @@ const XLS_STYLE = {
   total: { fill: { patternType: "solid", fgColor: { rgb: "FFEDE4" } }, font: { bold: true, sz: 12, color: { rgb: "182234" } }, border: XLS_BORDER },
   label: { font: { bold: true, sz: 11, color: { rgb: "182234" } } },
 };
+// Correspondance entre les styles ci-dessus et l'index de cellXfs dans styles.xml (cf. downloadXLSX).
+const XLS_STYLE_XF_ENTRIES = [[XLS_STYLE.title, 1], [XLS_STYLE.subtitle, 2], [XLS_STYLE.tableHeader, 3], [XLS_STYLE.category, 4], [XLS_STYLE.data, 5], [XLS_STYLE.total, 6], [XLS_STYLE.label, 7]];
 
-function downloadXLSX(filename, sheets) {
-  const wb = XLSX.utils.book_new();
-  sheets.forEach(sh => {
-    const ws = XLSX.utils.aoa_to_sheet(sh.rows);
-    if (sh.cols) ws["!cols"] = sh.cols.map(w => ({ wch: w }));
-    if (sh.rowHeights) ws["!rows"] = sh.rowHeights.map(h => h ? { hpt: h } : {});
-    if (sh.merges) ws["!merges"] = sh.merges.map(m => ({ s: { r: m.r1, c: m.c1 }, e: { r: m.r2, c: m.c2 } }));
-    (sh.formulas || []).forEach(({ ref, f }) => { ws[ref] = { t: "n", f }; });
-    (sh.styles || []).forEach(({ row, cols, style }) => {
-      (cols || [0]).forEach(c => {
-        const addr = XLSX.utils.encode_cell({ r: row, c });
-        if (!ws[addr]) ws[addr] = { t: "s", v: "" };
-        ws[addr].s = style;
-      });
-    });
-    XLSX.utils.book_append_sheet(wb, ws, sh.name.slice(0, 31));
-  });
-  XLSX.writeFile(wb, filename);
+// Générateur XLSX maison (OOXML assemblé à la main, comme les .docx plus bas) — remplace l'usage
+// de la librairie "xlsx" pour ÉCRIRE des fichiers : son édition gratuite accepte bien qu'on lui
+// passe des styles de cellule (ws[addr].s = ...) mais les ignore silencieusement à l'écriture, et
+// ne sait pas du tout écrire de validation de données (listes déroulantes). Résultat concret avant
+// ce correctif : aucun des classeurs générés (Exigences, grille du jury, etc.) n'affichait la mise
+// en forme orange/marine pourtant définie dans XLS_STYLE. Ce writer applique réellement les styles
+// et supporte les listes déroulantes par feuille.
+const XLS_STYLE_XF = new Map(XLS_STYLE_XF_ENTRIES);
+
+function xlsxColLetter(c) {
+  let s = "", n = c + 1;
+  while (n > 0) { const r = (n - 1) % 26; s = String.fromCharCode(65 + r) + s; n = Math.floor((n - 1) / 26); }
+  return s;
 }
 
-// Génère un classeur "Cahier de réponses" avec une vraie liste déroulante Excel (validation de
-// données) sur la colonne Réponse — la librairie xlsx (édition gratuite) ne sait pas écrire ce
-// genre de validation, donc le fichier est assemblé à la main comme les .docx plus bas.
-function downloadResponseSheetXLSX(filename, sheetName, requirements) {
-  const headers = ["ID", "Exigence", "Catégorie", "Criticité", "Obligatoire", "Réponse", "Justificatif / commentaire"];
-  const lastRow = requirements.length + 1;
-  const cell = (col, row, value, style) => {
-    const ref = `${col}${row}`;
-    if (value === undefined || value === "") return `<c r="${ref}" s="${style}"/>`;
-    return `<c r="${ref}" t="inlineStr" s="${style}"><is><t xml:space="preserve">${xmlEscape(value)}</t></is></c>`;
-  };
-  const cols = ["A", "B", "C", "D", "E", "F", "G"];
-  let sheetData = `<row r="1">${headers.map((h, i) => cell(cols[i], 1, h, 1)).join("")}</row>`;
-  requirements.forEach((r, i) => {
-    const row = i + 2;
-    const values = [r.id, r.description, r.category, r.criticality, r.mandatory ? "Oui" : "Non", "", ""];
-    sheetData += `<row r="${row}">${values.map((v, ci) => cell(cols[ci], row, v, 2)).join("")}</row>`;
+function downloadXLSX(filename, sheets) {
+  const sheetParts = []; const sheetRelsOverrides = []; const workbookSheetEls = []; const workbookRelEls = [];
+  sheets.forEach((sh, sIdx) => {
+    const sheetId = sIdx + 1;
+    const cellsByAddr = new Map(); // "r,c" -> { value, xf, formula }
+    const getXf = (style) => (style && XLS_STYLE_XF.has(style)) ? XLS_STYLE_XF.get(style) : 0;
+
+    (sh.rows || []).forEach((rowArr, r) => {
+      rowArr.forEach((value, c) => {
+        if (value === null || value === undefined || value === "") return;
+        cellsByAddr.set(`${r},${c}`, { value });
+      });
+    });
+    (sh.styles || []).forEach(({ row, cols, style }) => {
+      const xf = getXf(style);
+      (cols || [0]).forEach(c => {
+        const key = `${row},${c}`;
+        const existing = cellsByAddr.get(key) || {};
+        cellsByAddr.set(key, { ...existing, xf });
+      });
+    });
+    (sh.formulas || []).forEach(({ ref, f }) => {
+      const m = ref.match(/^([A-Z]+)(\d+)$/);
+      if (!m) return;
+      let c = 0; for (const ch of m[1]) c = c * 26 + (ch.charCodeAt(0) - 64); c -= 1;
+      const r = Number(m[2]) - 1;
+      const key = `${r},${c}`;
+      const existing = cellsByAddr.get(key) || {};
+      cellsByAddr.set(key, { ...existing, formula: f });
+    });
+
+    let maxRow = 0, maxCol = 0;
+    cellsByAddr.forEach((_, key) => { const [r, c] = key.split(",").map(Number); if (r > maxRow) maxRow = r; if (c > maxCol) maxCol = c; });
+    (sh.merges || []).forEach(m => { if (m.r2 > maxRow) maxRow = m.r2; if (m.c2 > maxCol) maxCol = m.c2; });
+
+    const rowsMap = new Map();
+    cellsByAddr.forEach((cellInfo, key) => {
+      const [r, c] = key.split(",").map(Number);
+      if (!rowsMap.has(r)) rowsMap.set(r, []);
+      rowsMap.get(r).push({ c, ...cellInfo });
+    });
+
+    let sheetDataXml = "";
+    for (let r = 0; r <= maxRow; r++) {
+      const cells = (rowsMap.get(r) || []).sort((a, b) => a.c - b.c);
+      if (cells.length === 0 && !(sh.rowHeights && sh.rowHeights[r])) continue;
+      const h = sh.rowHeights && sh.rowHeights[r] ? ` ht="${sh.rowHeights[r]}" customHeight="1"` : "";
+      let rowXml = `<row r="${r + 1}"${h}>`;
+      cells.forEach(cl => {
+        const ref = `${xlsxColLetter(cl.c)}${r + 1}`;
+        const xfAttr = cl.xf ? ` s="${cl.xf}"` : "";
+        if (cl.formula) {
+          rowXml += `<c r="${ref}"${xfAttr}><f>${xmlEscape(cl.formula)}</f></c>`;
+        } else if (typeof cl.value === "number") {
+          rowXml += `<c r="${ref}"${xfAttr}><v>${cl.value}</v></c>`;
+        } else if (cl.value !== undefined) {
+          rowXml += `<c r="${ref}" t="inlineStr"${xfAttr}><is><t xml:space="preserve">${xmlEscape(String(cl.value))}</t></is></c>`;
+        } else {
+          rowXml += `<c r="${ref}"${xfAttr}/>`;
+        }
+      });
+      rowXml += "</row>";
+      sheetDataXml += rowXml;
+    }
+
+    const colsXml = sh.cols ? `<cols>${sh.cols.map((w, i) => `<col min="${i + 1}" max="${i + 1}" width="${w}" customWidth="1"/>`).join("")}</cols>` : "";
+    const mergesXml = (sh.merges || []).length ? `<mergeCells count="${sh.merges.length}">${sh.merges.map(m => `<mergeCell ref="${xlsxColLetter(m.c1)}${m.r1 + 1}:${xlsxColLetter(m.c2)}${m.r2 + 1}"/>`).join("")}</mergeCells>` : "";
+    const dvXml = (sh.dataValidations || []).length ? `<dataValidations count="${sh.dataValidations.length}">${sh.dataValidations.map(dv => `<dataValidation type="list" allowBlank="1" showInputMessage="1" showErrorMessage="1" errorTitle="Valeur invalide" error="Choisissez une valeur dans la liste." sqref="${dv.sqref}"><formula1>"${dv.list.join(",")}"</formula1></dataValidation>`).join("")}</dataValidations>` : "";
+
+    sheetParts.push(`<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">${colsXml}<sheetData>${sheetDataXml}</sheetData>${mergesXml}${dvXml}</worksheet>`);
+
+    const safeName = xmlEscape(excelSheetName(sh.name));
+    workbookSheetEls.push(`<sheet name="${safeName}" sheetId="${sheetId}" r:id="rId${sheetId}"/>`);
+    workbookRelEls.push(`<Relationship Id="rId${sheetId}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet${sheetId}.xml"/>`);
+    sheetRelsOverrides.push(`<Override PartName="/xl/worksheets/sheet${sheetId}.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>`);
   });
-
-  const sheetXml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">
-  <cols>
-    <col min="1" max="1" width="12" customWidth="1"/>
-    <col min="2" max="2" width="55" customWidth="1"/>
-    <col min="3" max="3" width="20" customWidth="1"/>
-    <col min="4" max="4" width="14" customWidth="1"/>
-    <col min="5" max="5" width="12" customWidth="1"/>
-    <col min="6" max="6" width="18" customWidth="1"/>
-    <col min="7" max="7" width="45" customWidth="1"/>
-  </cols>
-  <sheetData>${sheetData}</sheetData>
-  <dataValidations count="1">
-    <dataValidation type="list" allowBlank="1" showInputMessage="1" showErrorMessage="1" errorTitle="Réponse invalide" error="Choisissez une valeur dans la liste." sqref="F2:F${lastRow}">
-      <formula1>"Oui,Non,Partiellement"</formula1>
-    </dataValidation>
-  </dataValidations>
-</worksheet>`;
-
-  const stylesXml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">
-  <fonts count="2">
-    <font><sz val="11"/><name val="Calibri"/></font>
-    <font><b/><sz val="11"/><color rgb="FFFFFFFF"/><name val="Calibri"/></font>
-  </fonts>
-  <fills count="3">
-    <fill><patternFill patternType="none"/></fill>
-    <fill><patternFill patternType="gray125"/></fill>
-    <fill><patternFill patternType="solid"><fgColor rgb="FFFD5312"/><bgColor indexed="64"/></patternFill></fill>
-  </fills>
-  <borders count="2">
-    <border><left/><right/><top/><bottom/><diagonal/></border>
-    <border><left style="thin"><color rgb="FFD9D9D9"/></left><right style="thin"><color rgb="FFD9D9D9"/></right><top style="thin"><color rgb="FFD9D9D9"/></top><bottom style="thin"><color rgb="FFD9D9D9"/></bottom><diagonal/></border>
-  </borders>
-  <cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs>
-  <cellXfs count="3">
-    <xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/>
-    <xf numFmtId="0" fontId="1" fillId="2" borderId="1" xfId="0" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="center" wrapText="1"/></xf>
-    <xf numFmtId="0" fontId="0" fillId="0" borderId="1" xfId="0" applyBorder="1" applyAlignment="1"><alignment vertical="top" wrapText="1"/></xf>
-  </cellXfs>
-  <cellStyles count="1"><cellStyle name="Normal" xfId="0" builtinId="0"/></cellStyles>
-</styleSheet>`;
+  workbookRelEls.push(`<Relationship Id="rId${sheets.length + 1}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/>`);
 
   const workbookXml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
-  <sheets><sheet name="${xmlEscape(sheetName.slice(0, 31))}" sheetId="1" r:id="rId1"/></sheets>
+  <calcPr calcId="0" fullCalcOnLoad="1"/>
+  <sheets>${workbookSheetEls.join("")}</sheets>
 </workbook>`;
 
   const contentTypesXml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
@@ -596,7 +612,7 @@ function downloadResponseSheetXLSX(filename, sheetName, requirements) {
   <Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>
   <Default Extension="xml" ContentType="application/xml"/>
   <Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/>
-  <Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>
+  ${sheetRelsOverrides.join("\n  ")}
   <Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/>
 </Types>`;
 
@@ -607,19 +623,81 @@ function downloadResponseSheetXLSX(filename, sheetName, requirements) {
 
   const workbookRelsXml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
-  <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/>
-  <Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/>
+  ${workbookRelEls.join("\n  ")}
 </Relationships>`;
 
-  const zip = makeZip([
+  const stylesXml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">
+  <fonts count="8">
+    <font><sz val="11"/><name val="Calibri"/></font>
+    <font><b/><sz val="14"/><color rgb="FFFFFFFF"/><name val="Calibri"/></font>
+    <font><i/><sz val="10"/><color rgb="FF666666"/><name val="Calibri"/></font>
+    <font><b/><sz val="11"/><color rgb="FFFFFFFF"/><name val="Calibri"/></font>
+    <font><b/><sz val="11"/><color rgb="FF182234"/><name val="Calibri"/></font>
+    <font><sz val="11"/><name val="Calibri"/></font>
+    <font><b/><sz val="12"/><color rgb="FF182234"/><name val="Calibri"/></font>
+    <font><b/><sz val="11"/><color rgb="FF182234"/><name val="Calibri"/></font>
+  </fonts>
+  <fills count="6">
+    <fill><patternFill patternType="none"/></fill>
+    <fill><patternFill patternType="gray125"/></fill>
+    <fill><patternFill patternType="solid"><fgColor rgb="FF182234"/><bgColor indexed="64"/></patternFill></fill>
+    <fill><patternFill patternType="solid"><fgColor rgb="FFFD5312"/><bgColor indexed="64"/></patternFill></fill>
+    <fill><patternFill patternType="solid"><fgColor rgb="FFEEEDE7"/><bgColor indexed="64"/></patternFill></fill>
+    <fill><patternFill patternType="solid"><fgColor rgb="FFFFEDE4"/><bgColor indexed="64"/></patternFill></fill>
+  </fills>
+  <borders count="2">
+    <border><left/><right/><top/><bottom/><diagonal/></border>
+    <border><left style="thin"><color rgb="FFD9D9D9"/></left><right style="thin"><color rgb="FFD9D9D9"/></right><top style="thin"><color rgb="FFD9D9D9"/></top><bottom style="thin"><color rgb="FFD9D9D9"/></bottom><diagonal/></border>
+  </borders>
+  <cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs>
+  <cellXfs count="8">
+    <xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/>
+    <xf numFmtId="0" fontId="1" fillId="2" borderId="0" xfId="0" applyFont="1" applyFill="1" applyAlignment="1"><alignment horizontal="left" vertical="center" wrapText="1"/></xf>
+    <xf numFmtId="0" fontId="2" fillId="0" borderId="0" xfId="0" applyFont="1"/>
+    <xf numFmtId="0" fontId="3" fillId="3" borderId="1" xfId="0" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="center" wrapText="1"/></xf>
+    <xf numFmtId="0" fontId="4" fillId="4" borderId="1" xfId="0" applyFont="1" applyFill="1" applyBorder="1"/>
+    <xf numFmtId="0" fontId="5" fillId="0" borderId="1" xfId="0" applyBorder="1" applyAlignment="1"><alignment vertical="top" wrapText="1"/></xf>
+    <xf numFmtId="0" fontId="6" fillId="5" borderId="1" xfId="0" applyFont="1" applyFill="1" applyBorder="1"/>
+    <xf numFmtId="0" fontId="7" fillId="0" borderId="0" xfId="0" applyFont="1"/>
+  </cellXfs>
+  <cellStyles count="1"><cellStyle name="Normal" xfId="0" builtinId="0"/></cellStyles>
+</styleSheet>`;
+
+  const files = [
     { name: "[Content_Types].xml", data: strToBytes(contentTypesXml) },
     { name: "_rels/.rels", data: strToBytes(rootRelsXml) },
     { name: "xl/workbook.xml", data: strToBytes(workbookXml) },
     { name: "xl/_rels/workbook.xml.rels", data: strToBytes(workbookRelsXml) },
     { name: "xl/styles.xml", data: strToBytes(stylesXml) },
-    { name: "xl/worksheets/sheet1.xml", data: strToBytes(sheetXml) },
-  ]);
-  downloadBlob(filename, zip, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+    ...sheetParts.map((xml, i) => ({ name: `xl/worksheets/sheet${i + 1}.xml`, data: strToBytes(xml) })),
+  ];
+  downloadBlob(filename, makeZip(files), "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+}
+
+// Classeur "Cahier de réponses" — mêmes styles que le reste de l'app, avec une vraie liste
+// déroulante Excel sur la colonne Réponse (Oui / Non / Partiellement).
+// Construit une feuille "rapport" standard : bandeau titre marine, en-tête de colonnes orange,
+// lignes de données bordées — le même habillage sur tous les classeurs générés par l'app.
+function styledReportSheet(name, title, headers, dataRows, colWidths, dataValidations) {
+  const nCols = headers.length;
+  const allCols = Array.from({ length: nCols }, (_, i) => i);
+  const rows = [[title], headers, ...dataRows];
+  const styles = [
+    { row: 0, cols: allCols, style: XLS_STYLE.title },
+    { row: 1, cols: allCols, style: XLS_STYLE.tableHeader },
+  ];
+  dataRows.forEach((_, i) => styles.push({ row: i + 2, cols: allCols, style: XLS_STYLE.data }));
+  return { name, cols: colWidths, rows, styles, merges: [{ r1: 0, c1: 0, r2: 0, c2: nCols - 1 }], rowHeights: [22], dataValidations };
+}
+
+function downloadResponseSheetXLSX(filename, sheetName, requirements) {
+  const header = ["ID", "Exigence", "Catégorie", "Criticité", "Obligatoire", "Réponse", "Justificatif / commentaire"];
+  const dataRows = requirements.map(r => [r.id, r.description, r.category, r.criticality, r.mandatory ? "Oui" : "Non", "", ""]);
+  const lastRow = requirements.length + 2;
+  const sheet = styledReportSheet(sheetName, sheetName.toUpperCase(), header, dataRows, [12, 55, 20, 14, 12, 18, 45],
+    requirements.length ? [{ sqref: `F3:F${lastRow}`, list: ["Oui", "Non", "Partiellement"] }] : []);
+  downloadXLSX(filename, [sheet]);
 }
 
 /* ---- ZIP writer (stored / non compressé) ---- */
@@ -2178,7 +2256,9 @@ function RequirementsTab({ t, updateTender }) {
   const [suggesting, setSuggesting] = useState(false);
   const [suggestError, setSuggestError] = useState("");
   function exportExcel() {
-    downloadXLSX(`${t.reference}_exigences.xlsx`, [{ name: "Exigences", rows: [["ID", "Catégorie", "Exigence", "Criticité", "Obligatoire", "Méthode de vérification", "Dans le CDC"], ...t.requirements.map(r => [r.id, r.category, r.description, r.criticality, r.mandatory ? "Oui" : "Non", r.verificationMethod, r.includeInCDC === false ? "Non" : "Oui"])] }]);
+    const header = ["ID", "Catégorie", "Exigence", "Criticité", "Obligatoire", "Méthode de vérification", "Dans le CDC"];
+    const dataRows = t.requirements.map(r => [r.id, r.category, r.description, r.criticality, r.mandatory ? "Oui" : "Non", r.verificationMethod, r.includeInCDC === false ? "Non" : "Oui"]);
+    downloadXLSX(`${t.reference}_exigences.xlsx`, [styledReportSheet("Exigences", "EXIGENCES", header, dataRows, [10, 22, 55, 14, 14, 30, 14])]);
   }
   async function suggestRequirements() {
     setSuggesting(true); setSuggestError("");
@@ -2776,13 +2856,13 @@ function EvaluationTab({ t, updateTender, evaluatorName }) {
   }
 
   function exportFinancial() {
-    const rows = [["Fournisseur", "Prix initial", "Coûts récurrents (3 ans)", "Migration", "TCO 3 ans"]];
-    t.suppliers.forEach(s => {
+    const header = ["Fournisseur", "Prix initial", "Coûts récurrents (3 ans)", "Migration", "TCO 3 ans"];
+    const dataRows = t.suppliers.map(s => {
       const recurring = ((s.price.annual || 0) + (s.price.maintenance || 0)) * 3;
       const tco = (s.price.initial || 0) + recurring + (s.price.migration || 0);
-      rows.push([s.name, s.price.initial || 0, recurring, s.price.migration || 0, tco]);
+      return [s.name, s.price.initial || 0, recurring, s.price.migration || 0, tco];
     });
-    downloadXLSX(`${t.reference}_analyse_financiere.xlsx`, [{ name: "Analyse financière", rows }]);
+    downloadXLSX(`${t.reference}_analyse_financiere.xlsx`, [styledReportSheet("Analyse financière", "ANALYSE FINANCIÈRE", header, dataRows, [30, 16, 22, 16, 16])]);
   }
 
   return (
@@ -2854,14 +2934,15 @@ function ComparisonTab({ t }) {
   if (t.criteria.length === 0 || t.suppliers.length === 0) return <Card className="p-6 text-sm" style={{ color: C.inkSoft }}>Aucune donnée à comparer pour le moment.</Card>;
   const scores = computeSupplierScores(t);
   function exportComparison() {
-    const rows = [["Critère", "Poids", ...t.suppliers.map(s => s.name)]];
-    t.criteria.forEach(c => {
+    const header = ["Critère", "Poids", ...t.suppliers.map(s => s.name)];
+    const dataRows = t.criteria.map(c => {
       const row = [c.name, c.weight];
       scores.forEach(sc => { const b = sc.breakdown.find(x => x.criterionId === c.id); row.push(b && b.avg != null ? b.weighted.toFixed(1) : "—"); });
-      rows.push(row);
+      return row;
     });
-    rows.push(["Score total", "", ...scores.map(sc => sc.total)]);
-    downloadXLSX(`${t.reference}_comparatif_fournisseurs.xlsx`, [{ name: "Comparatif", rows }]);
+    dataRows.push(["Score total", "", ...scores.map(sc => sc.total)]);
+    const colWidths = [24, 12, ...t.suppliers.map(() => 20)];
+    downloadXLSX(`${t.reference}_comparatif_fournisseurs.xlsx`, [styledReportSheet("Comparatif", "COMPARATIF FOURNISSEURS", header, dataRows, colWidths)]);
   }
   return (
     <Card>
@@ -2903,13 +2984,13 @@ function SynthesisTab({ t }) {
   function strengthsWeaknesses(sc) { const sorted = [...sc.breakdown].filter(b => b.avg != null).sort((a, b) => b.avg - a.avg); return { best: sorted[0], worst: sorted[sorted.length - 1] }; }
 
   function exportRanking() {
-    const rows = [["Fournisseur", "Score technique", "Score financier", "Score global", "Classement"]];
-    scores.forEach((sc, i) => {
+    const header = ["Fournisseur", "Score technique", "Score financier", "Score global", "Classement"];
+    const dataRows = scores.map((sc, i) => {
       const priceBreak = sc.breakdown.find(b => b.criterionName === "Prix");
       const techTotal = sc.breakdown.filter(b => b.criterionName !== "Prix").reduce((s, b) => s + b.weighted, 0);
-      rows.push([sc.supplierName, +techTotal.toFixed(1), priceBreak ? priceBreak.weighted.toFixed(1) : "—", sc.total, i + 1]);
+      return [sc.supplierName, +techTotal.toFixed(1), priceBreak ? priceBreak.weighted.toFixed(1) : "—", sc.total, i + 1];
     });
-    downloadXLSX(`${t.reference}_synthese.xlsx`, [{ name: "Synthèse", rows }]);
+    downloadXLSX(`${t.reference}_synthese.xlsx`, [styledReportSheet("Synthèse", "SYNTHÈSE DE L'ÉVALUATION", header, dataRows, [30, 18, 18, 16, 14])]);
   }
 
   function exportSynthesisWord() {
