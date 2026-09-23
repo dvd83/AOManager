@@ -524,6 +524,104 @@ function downloadXLSX(filename, sheets) {
   XLSX.writeFile(wb, filename);
 }
 
+// Génère un classeur "Cahier de réponses" avec une vraie liste déroulante Excel (validation de
+// données) sur la colonne Réponse — la librairie xlsx (édition gratuite) ne sait pas écrire ce
+// genre de validation, donc le fichier est assemblé à la main comme les .docx plus bas.
+function downloadResponseSheetXLSX(filename, sheetName, requirements) {
+  const headers = ["ID", "Exigence", "Catégorie", "Criticité", "Obligatoire", "Réponse", "Justificatif / commentaire"];
+  const lastRow = requirements.length + 1;
+  const cell = (col, row, value, style) => {
+    const ref = `${col}${row}`;
+    if (value === undefined || value === "") return `<c r="${ref}" s="${style}"/>`;
+    return `<c r="${ref}" t="inlineStr" s="${style}"><is><t xml:space="preserve">${xmlEscape(value)}</t></is></c>`;
+  };
+  const cols = ["A", "B", "C", "D", "E", "F", "G"];
+  let sheetData = `<row r="1">${headers.map((h, i) => cell(cols[i], 1, h, 1)).join("")}</row>`;
+  requirements.forEach((r, i) => {
+    const row = i + 2;
+    const values = [r.id, r.description, r.category, r.criticality, r.mandatory ? "Oui" : "Non", "", ""];
+    sheetData += `<row r="${row}">${values.map((v, ci) => cell(cols[ci], row, v, 2)).join("")}</row>`;
+  });
+
+  const sheetXml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">
+  <cols>
+    <col min="1" max="1" width="12" customWidth="1"/>
+    <col min="2" max="2" width="55" customWidth="1"/>
+    <col min="3" max="3" width="20" customWidth="1"/>
+    <col min="4" max="4" width="14" customWidth="1"/>
+    <col min="5" max="5" width="12" customWidth="1"/>
+    <col min="6" max="6" width="18" customWidth="1"/>
+    <col min="7" max="7" width="45" customWidth="1"/>
+  </cols>
+  <sheetData>${sheetData}</sheetData>
+  <dataValidations count="1">
+    <dataValidation type="list" allowBlank="1" showInputMessage="1" showErrorMessage="1" errorTitle="Réponse invalide" error="Choisissez une valeur dans la liste." sqref="F2:F${lastRow}">
+      <formula1>"Oui,Non,Partiellement"</formula1>
+    </dataValidation>
+  </dataValidations>
+</worksheet>`;
+
+  const stylesXml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">
+  <fonts count="2">
+    <font><sz val="11"/><name val="Calibri"/></font>
+    <font><b/><sz val="11"/><color rgb="FFFFFFFF"/><name val="Calibri"/></font>
+  </fonts>
+  <fills count="3">
+    <fill><patternFill patternType="none"/></fill>
+    <fill><patternFill patternType="gray125"/></fill>
+    <fill><patternFill patternType="solid"><fgColor rgb="FFFD5312"/><bgColor indexed="64"/></patternFill></fill>
+  </fills>
+  <borders count="2">
+    <border><left/><right/><top/><bottom/><diagonal/></border>
+    <border><left style="thin"><color rgb="FFD9D9D9"/></left><right style="thin"><color rgb="FFD9D9D9"/></right><top style="thin"><color rgb="FFD9D9D9"/></top><bottom style="thin"><color rgb="FFD9D9D9"/></bottom><diagonal/></border>
+  </borders>
+  <cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs>
+  <cellXfs count="3">
+    <xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/>
+    <xf numFmtId="0" fontId="1" fillId="2" borderId="1" xfId="0" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="center" wrapText="1"/></xf>
+    <xf numFmtId="0" fontId="0" fillId="0" borderId="1" xfId="0" applyBorder="1" applyAlignment="1"><alignment vertical="top" wrapText="1"/></xf>
+  </cellXfs>
+  <cellStyles count="1"><cellStyle name="Normal" xfId="0" builtinId="0"/></cellStyles>
+</styleSheet>`;
+
+  const workbookXml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
+  <sheets><sheet name="${xmlEscape(sheetName.slice(0, 31))}" sheetId="1" r:id="rId1"/></sheets>
+</workbook>`;
+
+  const contentTypesXml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">
+  <Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>
+  <Default Extension="xml" ContentType="application/xml"/>
+  <Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/>
+  <Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>
+  <Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/>
+</Types>`;
+
+  const rootRelsXml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+  <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/>
+</Relationships>`;
+
+  const workbookRelsXml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+  <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/>
+  <Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/>
+</Relationships>`;
+
+  const zip = makeZip([
+    { name: "[Content_Types].xml", data: strToBytes(contentTypesXml) },
+    { name: "_rels/.rels", data: strToBytes(rootRelsXml) },
+    { name: "xl/workbook.xml", data: strToBytes(workbookXml) },
+    { name: "xl/_rels/workbook.xml.rels", data: strToBytes(workbookRelsXml) },
+    { name: "xl/styles.xml", data: strToBytes(stylesXml) },
+    { name: "xl/worksheets/sheet1.xml", data: strToBytes(sheetXml) },
+  ]);
+  downloadBlob(filename, zip, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+}
+
 /* ---- ZIP writer (stored / non compressé) ---- */
 const CRC_TABLE = (() => {
   const t = new Uint32Array(256);
@@ -791,11 +889,8 @@ function generateDocumentFile(tender, doc) {
     return;
   }
   if (AUTO_TABLE_DOC_NAMES.includes(doc.name)) {
-    const rows = tender.requirements.filter(r => r.includeInCDC !== false).map(r => [r.id, r.description, r.category, r.criticality, r.mandatory ? "Oui" : "Non", "Oui / Non ou texte + justificatif"]);
-    downloadXLSX(`${tender.reference}_${slug(doc.name)}.xlsx`, [{
-      name: doc.name,
-      rows: [["ID", "Exigence", "Catégorie", "Criticité", "Obligatoire", "Réponse attendue"], ...rows],
-    }]);
+    const requirements = tender.requirements.filter(r => r.includeInCDC !== false);
+    downloadResponseSheetXLSX(`${tender.reference}_${slug(doc.name)}.xlsx`, doc.name, requirements);
     return;
   }
   const schema = (TEXT_SCHEMAS[doc.name] || genericSchema)(tender);
