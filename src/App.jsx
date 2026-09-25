@@ -694,13 +694,23 @@ function styledReportSheet(name, title, headers, dataRows, colWidths, dataValida
   return { name, cols: colWidths, rows, styles, merges: [{ r1: 0, c1: 0, r2: 0, c2: nCols - 1 }], rowHeights: [22], dataValidations };
 }
 
+// Un onglet par catégorie d'exigence plutôt qu'une feuille unique — c'est la convention réellement
+// utilisée dans un cahier de réponses (chaque domaine/catégorie a son propre onglet), ce qui rend le
+// classeur exploitable directement par le comité d'évaluation et fait le lien explicite avec la
+// section « Exigences et spécifications » du cahier des charges (cf. buildCahierDesChargesBody).
 function downloadResponseSheetXLSX(filename, sheetName, requirements) {
-  const header = ["ID", "Exigence", "Catégorie", "Criticité", "Obligatoire", "Réponse", "Justificatif / commentaire"];
-  const dataRows = requirements.map(r => [r.id, r.description, r.category, r.criticality, r.mandatory ? "Oui" : "Non", "", ""]);
-  const lastRow = requirements.length + 2;
-  const sheet = styledReportSheet(sheetName, sheetName.toUpperCase(), header, dataRows, [12, 55, 20, 14, 12, 18, 45],
-    requirements.length ? [{ sqref: `F3:F${lastRow}`, list: ["Oui", "Non", "Partiellement"] }] : []);
-  downloadXLSX(filename, [sheet]);
+  const header = ["ID", "Exigence", "Criticité", "Obligatoire", "Réponse", "Justificatif / commentaire"];
+  const byCat = {};
+  requirements.forEach(r => { (byCat[r.category] = byCat[r.category] || []).push(r); });
+  const categories = Object.keys(byCat);
+  const sheets = (categories.length ? categories : [sheetName]).map(cat => {
+    const reqs = byCat[cat] || [];
+    const dataRows = reqs.map(r => [r.id, r.description, r.criticality, r.mandatory ? "Oui" : "Non", "", ""]);
+    const lastRow = reqs.length + 2;
+    return styledReportSheet(cat, cat.toUpperCase(), header, dataRows, [12, 55, 14, 12, 18, 45],
+      reqs.length ? [{ sqref: `E3:E${lastRow}`, list: ["Oui", "Non", "Partiellement"] }] : []);
+  });
+  downloadXLSX(filename, sheets);
 }
 
 /* ---- ZIP writer (stored / non compressé) ---- */
@@ -1075,6 +1085,7 @@ function buildCahierDesChargesBody(tender, schema, values) {
     Object.entries(byCat).forEach(([cat, reqs]) => {
       sub++;
       c.H(`4.${sub}. ${cat}`, 2, `b_cdc_4_${slug(cat)}`);
+      c.raw(para(`Le soumissionnaire répond à chacune des ${reqs.length} exigence(s) ci-dessous dans l'onglet « ${cat} » du cahier de réponses joint (colonnes Réponse et Justificatif / commentaire), en respectant la convention définie au chapitre 2.2.`, { italic: true, size: 18 }));
       reqs.forEach(r => { c.raw(requirementCardXml(r)); });
     });
   }
@@ -2526,6 +2537,7 @@ function RequirementsTab({ t, updateTender }) {
   }
   function removeRequirement(id) { updateTender(prev => ({ ...prev, requirements: prev.requirements.filter(r => r.id !== id) })); }
   function toggleIncludeInCDC(id) { updateTender(prev => ({ ...prev, requirements: prev.requirements.map(r => r.id === id ? { ...r, includeInCDC: r.includeInCDC === false } : r) })); }
+  function setCriticality(id, criticality) { updateTender(prev => ({ ...prev, requirements: prev.requirements.map(r => r.id === id ? { ...r, criticality } : r) })); }
   const inputStyle = { border: `1px solid ${C.border}` };
 
   return (
@@ -2583,7 +2595,9 @@ function RequirementsTab({ t, updateTender }) {
                 <div key={r.id} className="flex items-start gap-3 p-3 rounded" style={{ border: `1px solid ${C.borderSoft}`, opacity: r.includeInCDC === false ? 0.55 : 1 }}>
                   <span className="text-xs font-mono mt-0.5" style={{ color: C.inkSoft }}>{r.id}</span>
                   <div className="flex-1"><div className="text-sm" style={{ color: C.ink }}>{r.description}</div><div className="text-xs mt-1" style={{ color: C.inkSoft }}>Vérification : {r.verificationMethod || "—"}{r.mandatory ? " · Obligatoire" : ""}{r.includeInCDC === false ? " · Exclue du CDC" : ""}</div></div>
-                  <Badge color={CRITICALITY_META[r.criticality] || C.inkSoft} bg={C.slateSoft}>{r.criticality}</Badge>
+                  <select value={r.criticality} onChange={e => setCriticality(r.id, e.target.value)} className="text-xs font-medium rounded-full px-2.5 py-1 outline-none shrink-0" style={{ color: CRITICALITY_META[r.criticality] || C.inkSoft, backgroundColor: C.slateSoft, border: "none" }}>
+                    {Object.keys(CRITICALITY_META).map(c => <option key={c} value={c}>{c}</option>)}
+                  </select>
                   <button onClick={() => toggleIncludeInCDC(r.id)} title={r.includeInCDC === false ? "Inclure dans le CDC" : "Exclure du CDC"} className="p-1 rounded hover:bg-black/5">
                     {r.includeInCDC === false ? <Circle size={14} style={{ color: C.inkSoft }} /> : <CheckCircle2 size={14} style={{ color: C.green }} />}
                   </button>
