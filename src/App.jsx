@@ -1869,12 +1869,28 @@ function NewTenderWizard({ onCreate, onCancel }) {
     const tender = {
       id: `t${Date.now()}`, ...form, status: "draft", need, scope, requirements, criteria: [], suppliers: [], needQuestions: [],
       documents: [
+        // Documents rédigés et générés par l'app, à partir des données de l'AO.
         { id: "d1", name: "Procédure AO", category: "Procédure", mandatory: true, owner: "Achats", status: "À préparer" },
         { id: "d9", name: K2_DOC_NAME, category: "Procédure", mandatory: true, owner: "Achats", status: "À préparer" },
         { id: "d2", name: "Cahier des charges", category: "Technique", mandatory: true, owner: "Métier", status: "À préparer" },
         { id: "d3", name: "Cahier de réponses", category: "Technique", mandatory: true, owner: "Métier", status: "À préparer" },
         { id: "d7", name: "Série de prix", category: "Financier", mandatory: true, owner: "Achats", status: "À préparer" },
         { id: "d8", name: "Annexe A - Compréhension des besoins", category: "Technique", mandatory: false, owner: "Métier", status: "À préparer" },
+        { id: "d10", name: "NDA", category: "Juridique", mandatory: true, owner: "Achats", status: "À préparer" },
+        { id: "d11", name: "Développement durable", category: "Technique", mandatory: false, owner: "Achats", status: "À préparer" },
+        // Annexes administratives standard du Guide romand (formulaires à contenu fixe, fournis
+        // tels quels par Achats) — suivies ici par leur statut, jamais rédigées automatiquement :
+        // leur contenu est juridique/réglementaire et ne doit pas être inventé par l'app.
+        { id: "d20", name: "Annexe P1 - Engagement sur l'honneur", category: "Juridique", mandatory: true, owner: "Achats", status: "À préparer", external: true },
+        { id: "d21", name: "Annexe P4 - Caractéristiques du soumissionnaire", category: "Juridique", mandatory: true, owner: "Achats", status: "À préparer", external: true },
+        { id: "d22", name: "Annexe P5 - Assurances et garanties", category: "Juridique", mandatory: true, owner: "Achats", status: "À préparer", external: true },
+        { id: "d23", name: "Annexe P6 - Engagement égalité femmes-hommes", category: "Juridique", mandatory: true, owner: "Achats", status: "À préparer", external: true },
+        { id: "d24", name: "Annexe Q1 - Organisation qualité du soumissionnaire", category: "Technique", mandatory: false, owner: "Achats", status: "À préparer", external: true },
+        { id: "d25", name: "Annexe Q4 - Capacité en personnel et personnes-clés", category: "Technique", mandatory: false, owner: "Achats", status: "À préparer", external: true },
+        { id: "d26", name: "Annexe R9 - Qualifications des personnes-clés", category: "Technique", mandatory: false, owner: "Achats", status: "À préparer", external: true },
+        { id: "d27", name: "Conditions générales d'achat (CGA)", category: "Juridique", mandatory: true, owner: "Achats", status: "À préparer", external: true },
+        { id: "d28", name: "Modèle de contrat", category: "Juridique", mandatory: true, owner: "Achats", status: "À préparer", external: true },
+        { id: "d29", name: "Étiquettes pré-imprimées", category: "Logistique", mandatory: false, owner: "Achats", status: "À préparer", external: true },
       ],
       history: [{ date: new Date().toISOString().slice(0, 16).replace("T", " "), user: "Vous", action: "Création de l'AO" }],
     };
@@ -2422,13 +2438,24 @@ function K2Preview({ doc, tender, onGenerate }) {
   );
 }
 
+// Annexe administrative standard (formulaire à contenu juridique/réglementaire fixe) : l'app ne
+// rédige jamais ce type de document à la place d'Achats — elle se contente d'en suivre le statut.
+function ExternalDocNote({ doc }) {
+  return (
+    <Card className="p-6 mt-3">
+      <div className="text-sm font-semibold mb-2" style={{ color: C.ink }}>{doc.name}</div>
+      <div className="text-sm" style={{ color: C.inkSoft }}>Annexe administrative standard, à contenu juridique ou réglementaire fixe : ce document n'est pas rédigé par l'app, pour ne jamais générer un engagement ou une clause inventée. Joignez le modèle officiel tenu par Achats, puis mettez à jour son statut ci-dessus une fois prêt.</div>
+    </Card>
+  );
+}
+
 function DocumentsTab({ t, updateTender }) {
   const [openId, setOpenId] = useState(null);
 
   function setStatus(docId, status) { updateTender(prev => ({ ...prev, documents: prev.documents.map(d => d.id === docId ? { ...d, status } : d) })); }
   function setContent(docId, content) { updateTender(prev => ({ ...prev, documents: prev.documents.map(d => d.id === docId ? { ...d, content } : d) })); }
   function handleGenerate(doc) { generateDocumentFile(t, doc); setStatus(doc.id, "Généré"); }
-  function exportAll() { t.documents.forEach((doc, i) => setTimeout(() => handleGenerate(doc), i * 450)); }
+  function exportAll() { t.documents.filter(d => !d.external).forEach((doc, i) => setTimeout(() => handleGenerate(doc), i * 450)); }
 
   const openDoc = t.documents.find(d => d.id === openId);
 
@@ -2454,8 +2481,8 @@ function DocumentsTab({ t, updateTender }) {
                 <td className="px-6 py-3"><DocStatusSelect value={d.status} onChange={s => setStatus(d.id, s)} /></td>
                 <td className="px-6 py-3">
                   <div className="flex items-center gap-2">
-                    <GhostButton icon={PenLine} onClick={() => setOpenId(openId === d.id ? null : d.id)}>{openId === d.id ? "Fermer" : "Rédiger"}</GhostButton>
-                    <GhostButton icon={Download} onClick={() => handleGenerate(d)}>Télécharger</GhostButton>
+                    <GhostButton icon={PenLine} onClick={() => setOpenId(openId === d.id ? null : d.id)}>{openId === d.id ? "Fermer" : d.external ? "Voir" : "Rédiger"}</GhostButton>
+                    {!d.external && <GhostButton icon={Download} onClick={() => handleGenerate(d)}>Télécharger</GhostButton>}
                   </div>
                 </td>
               </tr>
@@ -2466,11 +2493,12 @@ function DocumentsTab({ t, updateTender }) {
         </div>
       </Card>
 
-      {openDoc && TABLE_DOC_NAMES.includes(openDoc.name) && <TableDocEditor doc={openDoc} onSave={c => setContent(openDoc.id, c)} onGenerate={() => handleGenerate(openDoc)} />}
-      {openDoc && AUTO_TABLE_DOC_NAMES.includes(openDoc.name) && <AutoTablePreview doc={openDoc} tender={t} onGenerate={() => handleGenerate(openDoc)} />}
-      {openDoc && QUESTIONS_DOC_NAMES.includes(openDoc.name) && <QuestionsDocEditor doc={openDoc} tender={t} updateTender={updateTender} onGenerate={() => handleGenerate(openDoc)} />}
-      {openDoc && openDoc.name === K2_DOC_NAME && <K2Preview doc={openDoc} tender={t} onGenerate={() => handleGenerate(openDoc)} />}
-      {openDoc && !TABLE_DOC_NAMES.includes(openDoc.name) && !AUTO_TABLE_DOC_NAMES.includes(openDoc.name) && !QUESTIONS_DOC_NAMES.includes(openDoc.name) && openDoc.name !== K2_DOC_NAME && <TextDocEditor doc={openDoc} tender={t} updateTender={updateTender} onSave={c => setContent(openDoc.id, c)} onGenerate={() => handleGenerate(openDoc)} />}
+      {openDoc && openDoc.external && <ExternalDocNote doc={openDoc} />}
+      {openDoc && !openDoc.external && TABLE_DOC_NAMES.includes(openDoc.name) && <TableDocEditor doc={openDoc} onSave={c => setContent(openDoc.id, c)} onGenerate={() => handleGenerate(openDoc)} />}
+      {openDoc && !openDoc.external && AUTO_TABLE_DOC_NAMES.includes(openDoc.name) && <AutoTablePreview doc={openDoc} tender={t} onGenerate={() => handleGenerate(openDoc)} />}
+      {openDoc && !openDoc.external && QUESTIONS_DOC_NAMES.includes(openDoc.name) && <QuestionsDocEditor doc={openDoc} tender={t} updateTender={updateTender} onGenerate={() => handleGenerate(openDoc)} />}
+      {openDoc && !openDoc.external && openDoc.name === K2_DOC_NAME && <K2Preview doc={openDoc} tender={t} onGenerate={() => handleGenerate(openDoc)} />}
+      {openDoc && !openDoc.external && !TABLE_DOC_NAMES.includes(openDoc.name) && !AUTO_TABLE_DOC_NAMES.includes(openDoc.name) && !QUESTIONS_DOC_NAMES.includes(openDoc.name) && openDoc.name !== K2_DOC_NAME && <TextDocEditor doc={openDoc} tender={t} updateTender={updateTender} onSave={c => setContent(openDoc.id, c)} onGenerate={() => handleGenerate(openDoc)} />}
     </div>
   );
 }
