@@ -1218,12 +1218,24 @@ function buildMaintenanceCDCBody(tender, schema, values) {
   c.raw(para(v("offre_base")));
   c.raw(para("Le présent appel d'offre comprend un volet unique constituant l'offre de base ; aucune option n'y est associée. L'adjudication s'exerce sur l'offre de base intégrale."));
 
-  // 3. Fourniture de services
+  // 3. Fourniture de services — les fiches d'exigence détaillées apparaissent directement sous ce
+  // chapitre, par catégorie de service, sans sommaire intermédiaire.
   const byCat = tender.requirements.filter(r => r.includeInCDC !== false).reduce((acc, r) => { (acc[r.category] = acc[r.category] || []).push(r); return acc; }, {});
   c.H("3. Fourniture de services", 1, "b_mcdc_3");
-  c.raw(para("Le tableau ci-après liste les grandes catégories de services attendus dans le cadre du présent appel d'offres ; le détail des exigences associées à chaque catégorie est précisé au chapitre 4."));
-  c.raw(docTable(["Catégorie de service", "Nombre d'exigences associées"],
-    Object.keys(byCat).length ? Object.entries(byCat).map(([cat, reqs]) => [cat, String(reqs.length)]) : [[A_COMPLETER, ""]]));
+  c.raw(para("Le soumissionnaire fournit les services décrits ci-dessous, pour l'ensemble du périmètre couvert par le présent appel d'offres."));
+  let sub3 = 0;
+  if (Object.keys(byCat).length === 0) {
+    sub3++;
+    c.H(`3.${sub3}. Exigences détaillées`, 2, "b_mcdc_3_req");
+    c.raw(para(A_COMPLETER));
+  } else {
+    Object.entries(byCat).forEach(([cat, reqs]) => {
+      sub3++;
+      c.H(`3.${sub3}. ${cat}`, 2, `b_mcdc_3_${slug(cat)}`);
+      c.raw(para(`Le soumissionnaire répond à chacune des ${reqs.length} exigence(s) ci-dessous dans l'onglet « ${cat} » du cahier de réponses joint (colonnes Réponse et Justificatif / commentaire), en respectant la convention définie au chapitre 1.3.`, { italic: true, size: 18 }));
+      reqs.forEach(r => { c.raw(requirementCardXml(r)); });
+    });
+  }
 
   // 4. Exigences relatives à l'exécution des services (dont SLA)
   c.H("4. Exigences relatives à l'exécution des services", 1, "b_mcdc_4");
@@ -1238,21 +1250,8 @@ function buildMaintenanceCDCBody(tender, schema, values) {
     ["Basse", A_COMPLETER, A_COMPLETER, A_COMPLETER],
   ]));
   c.raw(para("La priorité de traitement d'un incident résulte du croisement entre son niveau d'urgence et son impact (étendue des utilisateurs ou services affectés), selon une matrice à définir par l'adjudicateur.", { italic: true, size: 18 }));
-  let sub = 2;
-  if (Object.keys(byCat).length === 0) {
-    sub++;
-    c.H(`4.${sub}. Exigences détaillées`, 2, "b_mcdc_4_req");
-    c.raw(para(A_COMPLETER));
-  } else {
-    Object.entries(byCat).forEach(([cat, reqs]) => {
-      sub++;
-      c.H(`4.${sub}. ${cat}`, 2, `b_mcdc_4_${slug(cat)}`);
-      c.raw(para(`Le soumissionnaire répond à chacune des ${reqs.length} exigence(s) ci-dessous dans l'onglet « ${cat} » du cahier de réponses joint (colonnes Réponse et Justificatif / commentaire), en respectant la convention définie au chapitre 1.3.`, { italic: true, size: 18 }));
-      reqs.forEach(r => { c.raw(requirementCardXml(r)); });
-    });
-  }
 
-  // 5. Exigences relatives à la planification — même format de fiche que les exigences du chapitre 4,
+  // 5. Exigences relatives à la planification — même format de fiche que les exigences du chapitre 3,
   // conformément à la convention de présentation définie au chapitre 1.3.
   c.H("5. Exigences relatives à la planification", 1, "b_mcdc_5");
   c.raw(para("Les attentes concernant la planification des prestations du marché sont décrites ci-dessous."));
@@ -2723,7 +2722,8 @@ function RequirementsTab({ t, updateTender }) {
     setSuggesting(true); setSuggestError("");
     try {
       const prompt = `Tu es un assistant Achats. À partir du contexte d'appel d'offres ci-dessous, propose 5 à 8 exigences pertinentes à ajouter à la liste, en les répartissant dans les types standards suivants lorsque pertinent : ${STANDARD_REQUIREMENT_CATEGORIES.join(", ")} (ou un autre type court si aucun ne convient). ` +
-        `N'invente aucun chiffre ou règle spécifique non mentionnée ; reste générique et professionnel. Réponds UNIQUEMENT avec un tableau JSON d'objets, sans texte autour, où chaque objet a les clés : "category" (string courte), "description" (string), "criticality" (une valeur parmi Bloquante, Critique, Majeure, Normale, Souhaitable), "mandatory" (booléen), "verificationMethod" (string courte).\n\n` +
+        `Pour chaque exigence, rédige un titre court ("description") ET un paragraphe détaillé ("detail", 3 à 8 lignes, avec des tirets pour lister les points couverts si pertinent) qui sera repris tel quel dans la fiche d'exigence du cahier des charges. ` +
+        `N'invente aucun chiffre, délai ou règle spécifique non mentionné dans le contexte ci-dessous ; reste générique et professionnel, et utilise la formule exacte "[À COMPLÉTER PAR ACHATS]" à la place de tout chiffre ou délai que tu ne peux pas déduire du contexte. Réponds UNIQUEMENT avec un tableau JSON d'objets, sans texte autour, où chaque objet a les clés : "category" (string courte), "description" (string, titre court), "detail" (string, paragraphe détaillé), "remark" (string courte, optionnelle, ou ""), "criticality" (une valeur parmi Bloquante, Critique, Majeure, Normale, Souhaitable), "mandatory" (booléen), "verificationMethod" (string courte).\n\n` +
         `Titre : ${t.title}\nObjet : ${t.object}\nContexte : ${t.need.context}\nObjectifs : ${t.need.objectives}\nPérimètre inclus : ${(t.scope.included || []).join(", ")}\nExigences déjà présentes : ${t.requirements.map(r => r.description).join(" | ") || "aucune"}`;
       const suggestions = await callClaudeJSON(prompt, 2500);
       if (!Array.isArray(suggestions)) throw new Error("Format de réponse inattendu");
@@ -2734,7 +2734,7 @@ function RequirementsTab({ t, updateTender }) {
           const n = existingIds.filter(id => id.startsWith(prefix)).length + 1;
           const id = `${prefix}-${String(n).padStart(3, "0")}`;
           existingIds = [...existingIds, id];
-          return { id, category: s.category || "Général", description: s.description || "", criticality: s.criticality || "Normale", mandatory: !!s.mandatory, verificationMethod: s.verificationMethod || "", includeInCDC: true };
+          return { id, category: s.category || "Général", description: s.description || "", detail: s.detail || "", remark: s.remark || "", criticality: s.criticality || "Normale", mandatory: !!s.mandatory, verificationMethod: s.verificationMethod || "", includeInCDC: true };
         });
         return { ...prev, requirements: [...prev.requirements, ...newReqs] };
       });
