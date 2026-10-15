@@ -890,24 +890,37 @@ function labelValueTable(rows) {
   return `<w:tbl><w:tblPr><w:tblW w:w="${totalWidth}" w:type="dxa"/>${borders}</w:tblPr><w:tblGrid><w:gridCol w:w="${c1}"/><w:gridCol w:w="${c2}"/></w:tblGrid>${trs}</w:tbl><w:p/>`;
 }
 
-// Fiche d'exigence au format officiel : Essentielle (O/N) / Titre / Description / Remarque / Criticité / Conformité / Réponse.
+// Fiche d'exigence au format officiel : grille à 4 colonnes avec Lot + Essentielle (O/N) sur une
+// même ligne, puis Titre / Description / Remarque en pleine largeur, Date + Conformité sur une même
+// ligne, et Réponse en pleine largeur — Conformité et Réponse sont à renseigner par le soumissionnaire
+// (CO / PC / NC, cf. convention du chapitre précédent), jamais pré-remplies par l'app.
 function requirementCardXml(req) {
-  return labelValueTable([
-    ["Référence", req.id],
-    ["Essentielle (O/N)", req.mandatory ? "O" : "N"],
-    ["Description", req.description],
-    ["Remarque", req.remark || "—"],
-    ["Criticité", req.criticality],
-    ["Conformité (CO / PC / NC)", ""],
-    ["Réponse", ""],
-  ]);
+  const totalWidth = 9020;
+  const wA = 1800, wB = 2600, wC = 1800, wD = 2820; // wA + wB + wC + wD = totalWidth
+  const borders = `<w:tblBorders><w:top w:val="single" w:sz="4" w:color="${DOCX_BORDER}"/><w:left w:val="single" w:sz="4" w:color="${DOCX_BORDER}"/><w:bottom w:val="single" w:sz="4" w:color="${DOCX_BORDER}"/><w:right w:val="single" w:sz="4" w:color="${DOCX_BORDER}"/><w:insideH w:val="single" w:sz="4" w:color="${DOCX_BORDER}"/><w:insideV w:val="single" w:sz="4" w:color="${DOCX_BORDER}"/></w:tblBorders>`;
+  function labelCell(text, w) {
+    return `<w:tc><w:tcPr><w:tcW w:w="${w}" w:type="dxa"/><w:shd w:val="clear" w:fill="${DOCX_GRAY_SOFT}"/><w:vAlign w:val="center"/></w:tcPr><w:p>${runsForText(text, { bold: true, size: 18, color: DOCX_NAVY })}</w:p></w:tc>`;
+  }
+  function valueCell(text, w, span) {
+    const spanAttr = span ? `<w:gridSpan w:val="${span}"/>` : "";
+    return `<w:tc><w:tcPr><w:tcW w:w="${w}" w:type="dxa"/>${spanAttr}<w:vAlign w:val="center"/></w:tcPr><w:p>${runsForText(text, { size: 18 })}</w:p></w:tc>`;
+  }
+  const fullRow = (label, value) => `<w:tr>${labelCell(label, wA)}${valueCell(value, wB + wC + wD, 3)}</w:tr>`;
+  const rows =
+    `<w:tr>${labelCell("Lot", wA)}${valueCell(req.category || "", wB)}${labelCell("Essentielle (O/N)", wC)}${valueCell(req.mandatory ? "O" : "N", wD)}</w:tr>` +
+    fullRow("Titre", req.description) +
+    fullRow("Description", A_COMPLETER) +
+    fullRow("Remarque", req.remark || "—") +
+    `<w:tr>${labelCell("Date", wA)}${valueCell("", wB)}${labelCell("Conformité", wC)}${valueCell("A renseigner", wD)}</w:tr>` +
+    fullRow("Réponse", "");
+  return `<w:tbl><w:tblPr><w:tblW w:w="${totalWidth}" w:type="dxa"/>${borders}</w:tblPr><w:tblGrid><w:gridCol w:w="${wA}"/><w:gridCol w:w="${wB}"/><w:gridCol w:w="${wC}"/><w:gridCol w:w="${wD}"/></w:tblGrid>${rows}</w:tbl><w:p/>`;
 }
 
 function conformiteLegendXml() {
   return docTable(["Code", "Signification"], [
-    ["CO", "Conforme à l'exigence — le soumissionnaire n'a aucune réserve à émettre."],
-    ["PC", "Partiellement conforme — la partie non couverte est explicitée en Réponse."],
-    ["NC", "Non conforme — le soumissionnaire ne peut pas répondre à l'exigence."],
+    ["CO", "Conforme à l'exigence\nLe soumissionnaire n'a aucune réserve à émettre par rapport à l'exigence stipulée dans la description de l'ouvrage (cahier des charges)."],
+    ["PC", "Partiellement conforme à l'exigence\nLe soumissionnaire ne peut pas répondre exactement à l'exigence stipulée dans la description de l'ouvrage (cahier des charges). La partie de l'exigence ne pouvant pas être remplie est explicitée en Réponse."],
+    ["NC", "Non conforme à l'exigence\nLe soumissionnaire ne peut pas du tout répondre à l'exigence stipulée dans la description de l'ouvrage (cahier des charges). Une explication peut être fournie en Réponse."],
   ]);
 }
 
@@ -1056,7 +1069,8 @@ function buildCahierDesChargesBody(tender, schema, values) {
   c.H("2.1.3. Étape 3", 3, "b_cdc_213");
   c.raw(para("Après avoir complété l'ensemble des rubriques, le soumissionnaire date et signe le document."));
   c.H("2.2. Convention de présentation des exigences", 2, "b_cdc_22");
-  c.raw(para("Chaque exigence est présentée sous forme de fiche (référence, caractère essentiel, description, remarque, criticité, conformité, réponse). Les niveaux de conformité possibles sont :"));
+  c.raw(para("Chaque exigence est rédigée sous la forme suivante : lot, caractère essentiel (O/N), titre, description, remarque, date, conformité, réponse."));
+  c.raw(para("• La rubrique Remarque, facultative, complète et clarifie l'énoncé de l'exigence ; cette rubrique fait partie intégrante de l'exigence.\n• Une exigence est Essentielle si elle est une raison d'être du produit ; une exigence non essentielle améliore, facilite ou complète le service rendu.\n• Chaque réponse du soumissionnaire est rédigée dans Réponse.\n• Les niveaux de conformité possibles sont :"));
   c.raw(conformiteLegendXml());
 
   // 3. Présentation générale
@@ -1172,7 +1186,8 @@ function buildMaintenanceCDCBody(tender, schema, values) {
   c.H("1.2.3. Étape 3", 3, "b_mcdc_123");
   c.raw(para("Après avoir complété l'ensemble des rubriques, le soumissionnaire date et signe le document."));
   c.H("1.3. Convention de présentation des exigences", 2, "b_mcdc_13");
-  c.raw(para("Chaque exigence est présentée sous forme de fiche (référence, caractère essentiel, description, remarque, criticité, conformité, réponse). Les niveaux de conformité possibles sont :"));
+  c.raw(para("Chaque exigence est rédigée sous la forme suivante : lot, caractère essentiel (O/N), titre, description, remarque, date, conformité, réponse."));
+  c.raw(para("• La rubrique Remarque, facultative, complète et clarifie l'énoncé de l'exigence ; cette rubrique fait partie intégrante de l'exigence.\n• Une exigence est Essentielle si elle est une raison d'être du produit ; une exigence non essentielle améliore, facilite ou complète le service rendu.\n• Chaque réponse du soumissionnaire est rédigée dans Réponse.\n• Les niveaux de conformité possibles sont :"));
   c.raw(conformiteLegendXml());
 
   // 2. Présentation générale
