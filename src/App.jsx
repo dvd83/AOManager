@@ -1218,38 +1218,50 @@ function buildMaintenanceCDCBody(tender, schema, values) {
   c.raw(para(v("offre_base")));
   c.raw(para("Le présent appel d'offre comprend un volet unique constituant l'offre de base ; aucune option n'y est associée. L'adjudication s'exerce sur l'offre de base intégrale."));
 
-  // 3. Fourniture de services — les fiches d'exigence détaillées apparaissent directement sous ce
-  // chapitre, par catégorie de service, sans sommaire intermédiaire.
+  // 3. Fourniture de services — les fiches d'exigence s'enchaînent directement sous ce chapitre,
+  // sans sous-titre intermédiaire (structure conforme au document de référence : un simple
+  // paragraphe d'intitulé en gras précède chaque groupe de fiches, pas un niveau de titre à part).
   const byCat = tender.requirements.filter(r => r.includeInCDC !== false).reduce((acc, r) => { (acc[r.category] = acc[r.category] || []).push(r); return acc; }, {});
   c.H("3. Fourniture de services", 1, "b_mcdc_3");
   c.raw(para("Le soumissionnaire fournit les services décrits ci-dessous, pour l'ensemble du périmètre couvert par le présent appel d'offres."));
-  let sub3 = 0;
   if (Object.keys(byCat).length === 0) {
-    sub3++;
-    c.H(`3.${sub3}. Exigences détaillées`, 2, "b_mcdc_3_req");
     c.raw(para(A_COMPLETER));
   } else {
     Object.entries(byCat).forEach(([cat, reqs]) => {
-      sub3++;
-      c.H(`3.${sub3}. ${cat}`, 2, `b_mcdc_3_${slug(cat)}`);
+      c.raw(para(cat, { bold: true, size: 20, color: DOCX_NAVY }));
       c.raw(para(`Le soumissionnaire répond à chacune des ${reqs.length} exigence(s) ci-dessous dans l'onglet « ${cat} » du cahier de réponses joint (colonnes Réponse et Justificatif / commentaire), en respectant la convention définie au chapitre 1.3.`, { italic: true, size: 18 }));
       reqs.forEach(r => { c.raw(requirementCardXml(r)); });
     });
   }
 
-  // 4. Exigences relatives à l'exécution des services (dont SLA)
+  // 4. Exigences relatives à l'exécution des services (dont SLA) — la règle de communication et
+  // l'engagement de niveau de service sont eux-mêmes formalisés sous forme de fiche d'exigence
+  // (même convention qu'au chapitre 3), comme dans le document de référence.
   c.H("4. Exigences relatives à l'exécution des services", 1, "b_mcdc_4");
   c.H("4.1. Communication", 2, "b_mcdc_41");
-  c.raw(para("La communication entre l'organisation et le soumissionnaire doit être réalisée en langue française, sauf lorsqu'une communication implique directement un tiers (ex. éditeur/constructeur) dans le cadre du traitement d'un incident."));
+  c.raw(para("Pour chacun des services fournis par le soumissionnaire, la communication avec l'organisation doit être réalisée en langue française, sauf lorsqu'une communication implique directement un tiers (ex. éditeur/constructeur) dans le cadre du traitement d'un incident, auquel cas l'anglais est autorisé."));
+  c.raw(requirementCardXml({
+    category: "Offre de base", description: "Communication", mandatory: false,
+    detail: "Le soumissionnaire s'engage à respecter la langue de communication définie ci-dessus pour l'ensemble des échanges liés à l'exécution du contrat.",
+  }));
   c.H("4.2. Accords de niveau de service (SLA)", 2, "b_mcdc_42");
-  c.raw(para("Le traitement des incidents repose sur les niveaux d'urgence et de priorité définis ci-dessous."));
-  c.raw(docTable(["Niveau d'urgence", "Définition", "Délai de prise en charge", "Délai de résolution cible"], [
-    ["Critique", A_COMPLETER, A_COMPLETER, A_COMPLETER],
-    ["Haute", A_COMPLETER, A_COMPLETER, A_COMPLETER],
-    ["Normale", A_COMPLETER, A_COMPLETER, A_COMPLETER],
-    ["Basse", A_COMPLETER, A_COMPLETER, A_COMPLETER],
+  c.raw(para("Dans le cadre du traitement des incidents, l'organisation définit ci-dessous les niveaux d'urgence et de priorité applicables."));
+  c.raw(para("Définition des niveaux d'urgence :", { italic: true, size: 18 }));
+  c.raw(docTable(["Niveau d'urgence", "Définition"], [
+    ["Critique", A_COMPLETER], ["Haute", A_COMPLETER], ["Normale", A_COMPLETER], ["Basse", A_COMPLETER],
   ]));
-  c.raw(para("La priorité de traitement d'un incident résulte du croisement entre son niveau d'urgence et son impact (étendue des utilisateurs ou services affectés), selon une matrice à définir par l'adjudicateur.", { italic: true, size: 18 }));
+  c.raw(para("Niveaux de priorité de traitement des incidents :", { italic: true, size: 18 }));
+  c.raw(docTable(["Niveau de priorité", "Prise en charge de l'incident", "Temps de résolution cible", "Engagements"], [
+    ["P1", A_COMPLETER, A_COMPLETER, A_COMPLETER],
+    ["P2", A_COMPLETER, A_COMPLETER, A_COMPLETER],
+    ["P3", A_COMPLETER, A_COMPLETER, A_COMPLETER],
+    ["P4", A_COMPLETER, A_COMPLETER, A_COMPLETER],
+  ]));
+  c.raw(para("La priorité attribuée à un incident résulte du croisement entre son niveau d'urgence et son impact (étendue des utilisateurs ou services affectés), selon une matrice à définir par l'adjudicateur.", { italic: true, size: 18 }));
+  c.raw(requirementCardXml({
+    category: "Offre de base", description: "Accord de niveaux de service", mandatory: true,
+    detail: "Le soumissionnaire s'engage à respecter les niveaux de priorité et les temps de résolution cibles définis ci-dessus pour l'ensemble des incidents déclarés sur le périmètre couvert.",
+  }));
 
   // 5. Exigences relatives à la planification — même format de fiche que les exigences du chapitre 3,
   // conformément à la convention de présentation définie au chapitre 1.3.
