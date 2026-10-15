@@ -177,9 +177,15 @@ const TEXT_SCHEMAS = {
     { key: "obj_doc", label: "1.1. Objet du document", seed: t.object || "", kind: "acquisition" },
     { key: "situation", label: "Situation actuelle", seed: t.need.context || "" },
     { key: "objectifs", label: "Objectifs", seed: t.need.objectives || "" },
-    { key: "enjeux", label: "2.2. Enjeux (cahier de maintenance/support)", seed: A_COMPLETER, kind: "maintenance" },
+    { key: "enjeux", label: "2.2. Enjeux (cahier de maintenance/support)", seed: t.need.problem || A_COMPLETER, kind: "maintenance" },
     { key: "offre_base", label: "2.5. Offre de base sans options (cahier de maintenance/support)", seed: A_COMPLETER, kind: "maintenance" },
-    { key: "planification_service", label: "5. Exigences de planification (cahier de maintenance/support)", seed: A_COMPLETER, kind: "maintenance" },
+    { key: "planification_service", label: "5. Exigences de planification (cahier de maintenance/support)", seed:
+        "Il est attendu que le soumissionnaire :\n" +
+        `- Ait réalisé la prestation unique d'initialisation des services dans un délai de ${A_COMPLETER} jours calendaires suivant la signature du contrat.\n` +
+        `- Mette en œuvre le guichet unique de support dans un délai de ${A_COMPLETER} jours calendaires suivant la fin de l'initialisation des services.\n` +
+        `- Ait réalisé la planification du premier rendez-vous de suivi et de conseil technique régulier dans un délai de ${A_COMPLETER} jours calendaires suivant la signature du contrat.\n` +
+        "Le soumissionnaire indique ci-dessous s'il est en mesure de se conformer aux exigences décrites ci-dessus. S'il n'est pas en mesure de s'y conformer, il décrit la planification à laquelle il est en mesure de s'engager.",
+      kind: "maintenance" },
     { key: "parties_prenantes", label: "3.3. Principales parties prenantes", seed: `Responsable métier : ${t.responsibleMetier || A_COMPLETER}\nAcheteur : ${t.buyer || A_COMPLETER}`, kind: "acquisition" },
     { key: "perimetre", label: "3.4. Périmètre de l'offre", seed: [
         ...(t.scope.included || []).map(x => `Inclus : ${x}`),
@@ -909,7 +915,7 @@ function requirementCardXml(req) {
   const rows =
     `<w:tr>${labelCell("Lot", wA)}${valueCell(req.category || "", wB)}${labelCell("Essentielle (O/N)", wC)}${valueCell(req.mandatory ? "O" : "N", wD)}</w:tr>` +
     fullRow("Titre", req.description) +
-    fullRow("Description", A_COMPLETER) +
+    fullRow("Description", req.detail || A_COMPLETER) +
     fullRow("Remarque", req.remark || "—") +
     `<w:tr>${labelCell("Date", wA)}${valueCell("", wB)}${labelCell("Conformité", wC)}${valueCell("A renseigner", wD)}</w:tr>` +
     fullRow("Réponse", "");
@@ -1246,16 +1252,16 @@ function buildMaintenanceCDCBody(tender, schema, values) {
     });
   }
 
-  // 5. Exigences relatives à la planification
+  // 5. Exigences relatives à la planification — même format de fiche que les exigences du chapitre 4,
+  // conformément à la convention de présentation définie au chapitre 1.3.
   c.H("5. Exigences relatives à la planification", 1, "b_mcdc_5");
-  c.raw(para(v("planification_service")));
-  c.raw(docTable(["Étape", "Date"], [
-    ["Lancement de l'AO", tender.dateLaunch || A_COMPLETER],
-    ["Clôture de la réception des offres", tender.dateClose || A_COMPLETER],
-    ["Décision d'adjudication", tender.dateDecision || A_COMPLETER],
-    ["Démarrage des prestations", A_COMPLETER],
-    ["Revue périodique du contrat", A_COMPLETER],
-  ]));
+  c.raw(para("Les attentes concernant la planification des prestations du marché sont décrites ci-dessous."));
+  c.raw(requirementCardXml({
+    category: "Offre de base",
+    description: "Exigences relatives à la planification",
+    mandatory: true,
+    detail: v("planification_service"),
+  }));
 
   // 6. Exigences réglementaires
   c.H("6. Exigences réglementaires", 1, "b_mcdc_6");
@@ -2704,9 +2710,10 @@ const STANDARD_REQUIREMENT_CATEGORIES = [
 
 function RequirementsTab({ t, updateTender }) {
   const byCat = {}; t.requirements.forEach(r => { (byCat[r.category] = byCat[r.category] || []).push(r); });
-  const [form, setForm] = useState({ category: STANDARD_REQUIREMENT_CATEGORIES[0], customCategory: "", description: "", criticality: "Normale", mandatory: true, verificationMethod: "", includeInCDC: true });
+  const [form, setForm] = useState({ category: STANDARD_REQUIREMENT_CATEGORIES[0], customCategory: "", description: "", detail: "", remark: "", criticality: "Normale", mandatory: true, verificationMethod: "", includeInCDC: true });
   const [suggesting, setSuggesting] = useState(false);
   const [suggestError, setSuggestError] = useState("");
+  const [seedingMaintenance, setSeedingMaintenance] = useState(false);
   function exportExcel() {
     const header = ["ID", "Catégorie", "Exigence", "Criticité", "Obligatoire", "Méthode de vérification", "Dans le CDC"];
     const dataRows = t.requirements.map(r => [r.id, r.category, r.description, r.criticality, r.mandatory ? "Oui" : "Non", r.verificationMethod, r.includeInCDC === false ? "Non" : "Oui"]);
@@ -2740,10 +2747,46 @@ function RequirementsTab({ t, updateTender }) {
     if (!category || !form.description.trim()) return;
     const prefix = category.trim().slice(0, 3).toUpperCase();
     const n = t.requirements.filter(r => r.id.startsWith(prefix)).length + 1;
-    const newReq = { id: `${prefix}-${String(n).padStart(3, "0")}`, category, description: form.description, criticality: form.criticality, mandatory: form.mandatory, verificationMethod: form.verificationMethod, includeInCDC: form.includeInCDC };
+    const newReq = { id: `${prefix}-${String(n).padStart(3, "0")}`, category, description: form.description, detail: form.detail, remark: form.remark, criticality: form.criticality, mandatory: form.mandatory, verificationMethod: form.verificationMethod, includeInCDC: form.includeInCDC };
     updateTender(prev => ({ ...prev, requirements: [...prev.requirements, newReq] }));
     upsertLibraryItem("requirement", { category, description: form.description, criticality: form.criticality, mandatory: form.mandatory, verification_method: form.verificationMethod }).catch(() => {});
-    setForm(f => ({ ...f, description: "", verificationMethod: "" }));
+    setForm(f => ({ ...f, description: "", detail: "", remark: "", verificationMethod: "" }));
+  }
+  function seedMaintenanceRequirements() {
+    setSeedingMaintenance(true);
+    try {
+      const seeds = [
+        {
+          description: "Maintenance matérielle et logicielle des composants couverts",
+          detail: "Le soumissionnaire fournit une prestation de maintenance matérielle et logicielle pour l'ensemble des composants couverts, tels que décrits dans l'inventaire du périmètre annexé.\nCette prestation couvre notamment :\n- Le remplacement du matériel défectueux par un matériel équivalent, dans un délai à préciser par le soumissionnaire après déclaration de la panne auprès du point de contact support.\n- La fourniture des correctifs et des versions logicielles majeures et mineures pour l'ensemble des composants couverts.\n- Le suivi de l'inventaire du matériel et des logiciels couverts, mis à jour après chaque échange de matériel ou acquisition.\n- La mise à jour des documents d'exploitation en cas de changement d'organisation ou de procédure pendant la durée du contrat.",
+          remark: "La fourniture de cette prestation est soumise au fait que les matériels et logiciels concernés n'aient pas atteint leur date de fin de vie publiée par le constructeur.",
+        },
+        {
+          description: "Guichet unique de support",
+          detail: "Le soumissionnaire met à disposition un point de contact unique pour l'ensemble des demandes liées à l'exploitation du périmètre couvert.\nCe point de contact, accessible par portail web, e-mail et téléphone, permet de :\n- Déclarer et suivre un incident (panne, dysfonctionnement isolé ou général), au travers de tickets.\n- Formuler et suivre une demande d'assistance sur site ou à distance.\nLe point de contact assure le suivi et la relance des demandes jusqu'à leur résolution, et gère l'escalade vers le support du fabricant si nécessaire.\nSes horaires de disponibilité (standard et/ou étendus pour les incidents critiques impactant l'exploitation) sont à préciser par le soumissionnaire.",
+        },
+        {
+          description: "Suivi et conseil technique régulier",
+          detail: "Le soumissionnaire planifie, selon une fréquence à définir, une journée de suivi sur site ou à distance avec l'équipe technique de l'organisation, portant notamment sur :\n- Une revue des incidents survenus sur la période écoulée et des recommandations pour éviter leur répétition.\n- Une revue des nouvelles versions mises à disposition par le constructeur et de l'opportunité de leur déploiement.\n- Des conseils sur les bonnes pratiques de gestion et d'architecture de l'infrastructure couverte.\nUn rapport écrit détaillant les actions menées est remis à l'organisation à l'issue de chaque intervention.",
+        },
+        {
+          description: "Prestation d'assistance en régie",
+          detail: "Le soumissionnaire propose une provision annuelle d'heures de prestations d'assistance technique, mobilisable à la demande de l'organisation pour des besoins tels que : mise à jour de composants, modifications mineures de configuration ou de topologie, déploiement d'une nouvelle fonctionnalité, ou dépannage avancé.\nCes prestations sont déclenchées uniquement à la demande de l'organisation, selon des délais de prévenance à préciser par le soumissionnaire.\nLorsque la provision annuelle est épuisée, le soumissionnaire propose une extension selon un tarif à décrire dans sa réponse.",
+        },
+      ];
+      updateTender(prev => {
+        const category = "Offre de base";
+        const prefix = category.trim().slice(0, 3).toUpperCase();
+        let existingIds = prev.requirements.map(r => r.id);
+        const newReqs = seeds.map(s => {
+          const n = existingIds.filter(id => id.startsWith(prefix)).length + 1;
+          const id = `${prefix}-${String(n).padStart(3, "0")}`;
+          existingIds = [...existingIds, id];
+          return { id, category, description: s.description, detail: s.detail, remark: s.remark || "", criticality: "Critique", mandatory: true, verificationMethod: "Démonstration / documentation", includeInCDC: true };
+        });
+        return { ...prev, requirements: [...prev.requirements, ...newReqs] };
+      });
+    } finally { setSeedingMaintenance(false); }
   }
   function addFromLibrary(item) {
     const category = item.category || "Général";
@@ -2763,10 +2806,18 @@ function RequirementsTab({ t, updateTender }) {
       <Card className="p-5">
         <div className="flex items-start justify-between gap-3 mb-1">
           <SectionTitle sub="Choisissez le type parmi les catégories standards utilisées dans les cahiers des charges — chaque exigence sera reprise automatiquement dans le cahier des charges et le cahier de réponses, sauf si vous décochez « Inclure dans le CDC ».">Ajouter une exigence</SectionTitle>
-          <button onClick={suggestRequirements} disabled={suggesting || !t.need.context} title={!t.need.context ? "Renseignez d'abord le besoin (onglet Besoin & périmètre)" : ""}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium disabled:opacity-40 shrink-0" style={{ border: `1px solid ${C.accent}`, color: C.accentDark, backgroundColor: C.accentSoft }}>
-            <Sparkles size={13} /> {suggesting ? "Suggestion en cours…" : "Suggérer des exigences (IA)"}
-          </button>
+          <div className="flex items-center gap-2 shrink-0">
+            {cdcKindOf(t) === "maintenance" && (
+              <button onClick={seedMaintenanceRequirements} disabled={seedingMaintenance}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium disabled:opacity-40" style={{ border: `1px solid ${C.border}`, color: C.ink, backgroundColor: C.slateSoft }}>
+                <Sparkles size={13} /> Exigences types maintenance/support
+              </button>
+            )}
+            <button onClick={suggestRequirements} disabled={suggesting || !t.need.context} title={!t.need.context ? "Renseignez d'abord le besoin (onglet Besoin & périmètre)" : ""}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium disabled:opacity-40" style={{ border: `1px solid ${C.accent}`, color: C.accentDark, backgroundColor: C.accentSoft }}>
+              <Sparkles size={13} /> {suggesting ? "Suggestion en cours…" : "Suggérer des exigences (IA)"}
+            </button>
+          </div>
         </div>
         {suggestError && <div className="text-xs mb-3" style={{ color: C.red }}>{suggestError}</div>}
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -2786,8 +2837,12 @@ function RequirementsTab({ t, updateTender }) {
             </select>
           </label>
           <div className="text-xs sm:col-span-2 -mt-2" style={{ color: C.inkSoft }}>Bloquante = essentielle, non évaluable sur une échelle : l'offre est conforme ou éliminée · Souhaitable = facultative, un plus non obligatoire.</div>
-          <label className="text-sm col-span-2"><div className="mb-1" style={{ color: C.inkSoft }}>Description de l'exigence</div>
+          <label className="text-sm col-span-2"><div className="mb-1" style={{ color: C.inkSoft }}>Titre de l'exigence</div>
             <textarea rows={2} value={form.description} onChange={e => setForm(f => ({ ...f, description: e.target.value }))} className="w-full px-3 py-2 rounded text-sm outline-none resize-none" style={inputStyle} /></label>
+          <label className="text-sm col-span-2"><div className="mb-1" style={{ color: C.inkSoft }}>Description détaillée (optionnel — reprise telle quelle dans la fiche d'exigence du CDC)</div>
+            <textarea rows={3} value={form.detail} onChange={e => setForm(f => ({ ...f, detail: e.target.value }))} className="w-full px-3 py-2 rounded text-sm outline-none resize-none" style={inputStyle} /></label>
+          <label className="text-sm col-span-2"><div className="mb-1" style={{ color: C.inkSoft }}>Remarque (optionnel)</div>
+            <input value={form.remark} onChange={e => setForm(f => ({ ...f, remark: e.target.value }))} className="w-full px-3 py-2 rounded text-sm outline-none" style={inputStyle} /></label>
           <label className="text-sm"><div className="mb-1" style={{ color: C.inkSoft }}>Méthode de vérification</div>
             <input value={form.verificationMethod} onChange={e => setForm(f => ({ ...f, verificationMethod: e.target.value }))} placeholder="Ex. Démonstration, documentation…" className="w-full px-3 py-2 rounded text-sm outline-none" style={inputStyle} /></label>
           <div className="flex items-center gap-4 mt-6">
