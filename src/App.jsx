@@ -174,26 +174,29 @@ const TEXT_SCHEMAS = {
   ],
   // Structure calquée sur le template officiel Achats — chapitres 1, 3, 6 (le reste : "Réponse du soumissionnaire", exigences, planification, glossaire, est généré automatiquement à l'export).
   "Cahier des charges": (t) => [
-    { key: "obj_doc", label: "1.1. Objet du document", seed: t.object || "" },
-    { key: "situation", label: "3.1. Situation actuelle", seed: t.need.context || "" },
-    { key: "objectifs", label: "3.2. Objectifs", seed: t.need.objectives || "" },
-    { key: "parties_prenantes", label: "3.3. Principales parties prenantes", seed: `Responsable métier : ${t.responsibleMetier || A_COMPLETER}\nAcheteur : ${t.buyer || A_COMPLETER}` },
+    { key: "obj_doc", label: "1.1. Objet du document", seed: t.object || "", kind: "acquisition" },
+    { key: "situation", label: "Situation actuelle", seed: t.need.context || "" },
+    { key: "objectifs", label: "Objectifs", seed: t.need.objectives || "" },
+    { key: "enjeux", label: "2.2. Enjeux (cahier de maintenance/support)", seed: A_COMPLETER, kind: "maintenance" },
+    { key: "offre_base", label: "2.5. Offre de base sans options (cahier de maintenance/support)", seed: A_COMPLETER, kind: "maintenance" },
+    { key: "planification_service", label: "5. Exigences de planification (cahier de maintenance/support)", seed: A_COMPLETER, kind: "maintenance" },
+    { key: "parties_prenantes", label: "3.3. Principales parties prenantes", seed: `Responsable métier : ${t.responsibleMetier || A_COMPLETER}\nAcheteur : ${t.buyer || A_COMPLETER}`, kind: "acquisition" },
     { key: "perimetre", label: "3.4. Périmètre de l'offre", seed: [
         ...(t.scope.included || []).map(x => `Inclus : ${x}`),
         ...(t.scope.excluded || []).map(x => `Exclu : ${x}`),
-      ].join("\n") || A_COMPLETER },
-    { key: "evolutions", label: "3.5. Évolutions probables", seed: A_COMPLETER },
-    { key: "phases", label: "3.6. Phasage du projet (si module « Projet phasé » activé)", seed: "Phase 1 – Validation technique et cadrage détaillé : " + A_COMPLETER },
-    { key: "licences_desc", label: "4. Licences (si module « Licences » activé)", seed: A_COMPLETER },
-    { key: "hebergement_desc", label: "4. Mode d'hébergement de la solution (si module « Hébergement / SaaS » activé)", seed: A_COMPLETER },
-    { key: "support_desc", label: "4. Prestations de support et accompagnement technique (si module « Support » activé)", seed: A_COMPLETER },
+      ].join("\n") || A_COMPLETER, kind: "acquisition" },
+    { key: "evolutions", label: "3.5. Évolutions probables", seed: A_COMPLETER, kind: "acquisition" },
+    { key: "phases", label: "3.6. Phasage du projet (si module « Projet phasé » activé)", seed: "Phase 1 – Validation technique et cadrage détaillé : " + A_COMPLETER, kind: "acquisition" },
+    { key: "licences_desc", label: "4. Licences (si module « Licences » activé)", seed: A_COMPLETER, kind: "acquisition" },
+    { key: "hebergement_desc", label: "4. Mode d'hébergement de la solution (si module « Hébergement / SaaS » activé)", seed: A_COMPLETER, kind: "acquisition" },
+    { key: "support_desc", label: "4. Prestations de support et accompagnement technique (si module « Support » activé)", seed: A_COMPLETER, kind: "acquisition" },
     { key: "cadre_legal", label: "6.1. Cadre légal", seed: A_VALIDER },
     { key: "contraintes_reg", label: "6.2. Contraintes réglementaires du présent appel d'offre", seed: t.need.constraints || A_COMPLETER },
     { key: "paiement", label: "6.4. Modalités de paiement", seed: A_VALIDER },
-    { key: "duree_contrat", label: "6.5. Durée du contrat (si module « Contrat-cadre » activé)", seed: A_VALIDER },
-    { key: "mono_multi", label: "6.5. Mono/multi-adjudicataire (si module « Contrat-cadre » activé)", seed: A_VALIDER },
-    { key: "montant_max", label: "6.5. Montant maximum du contrat (si module « Montants plafonds » activé)", seed: t.budget ? `${Number(t.budget).toLocaleString("fr-CH")} CHF (${A_VALIDER} pour le caractère ferme/plafond)` : A_COMPLETER },
-    { key: "montant_annuel_max", label: "6.5. Montant annuel maximum (si module « Montants plafonds » activé)", seed: A_COMPLETER },
+    { key: "duree_contrat", label: "6.5. Durée du contrat (si module « Contrat-cadre » activé)", seed: A_VALIDER, kind: "acquisition" },
+    { key: "mono_multi", label: "6.5. Mono/multi-adjudicataire (si module « Contrat-cadre » activé)", seed: A_VALIDER, kind: "acquisition" },
+    { key: "montant_max", label: "6.5. Montant maximum du contrat (si module « Montants plafonds » activé)", seed: t.budget ? `${Number(t.budget).toLocaleString("fr-CH")} CHF (${A_VALIDER} pour le caractère ferme/plafond)` : A_COMPLETER, kind: "acquisition" },
+    { key: "montant_annuel_max", label: "6.5. Montant annuel maximum (si module « Montants plafonds » activé)", seed: A_COMPLETER, kind: "acquisition" },
     { key: "resiliation", label: "6.6. Résiliation / Pénalités de retard", seed: A_COMPLETER },
   ],
   "SLA": (t) => [
@@ -929,6 +932,8 @@ const GLOSSARY_TERMS = [
   ["AO", "Appel d'offres"],
     ["CDC", "Cahier des charges — document définissant le besoin, le contexte et les exigences"],
   ["SLA", "Service Level Agreement — accord de niveau de service"],
+  ["RTO", "Recovery Time Objective — durée maximale d'interruption admissible après incident"],
+  ["RPO", "Recovery Point Objective — perte de données maximale admissible"],
   ["NDA", "Non-Disclosure Agreement — accord de confidentialité"],
   ["CO / PC / NC", "Conforme / Partiellement conforme / Non conforme — niveaux de réponse du soumissionnaire à une exigence"],
   ["Bloquante", "Exigence éliminatoire : son non-respect entraîne l'exclusion de l'offre, sans notation sur une échelle"],
@@ -997,7 +1002,10 @@ function generateDocumentFile(tender, doc) {
     return;
   }
   if (doc.name === "Cahier des charges") {
-    packageDocx(buildCahierDesChargesBody(tender, schema, values), `${tender.reference}_${slug(doc.name)}.docx`, tender);
+    const body = cdcKindOf(tender) === "maintenance"
+      ? buildMaintenanceCDCBody(tender, schema, values)
+      : buildCahierDesChargesBody(tender, schema, values);
+    packageDocx(body, `${tender.reference}_${slug(doc.name)}.docx`, tender);
     return;
   }
   if (doc.name === K2_DOC_NAME) {
@@ -1136,6 +1144,145 @@ function buildCahierDesChargesBody(tender, schema, values) {
   c.raw(docTable(["Terme", "Définition"], GLOSSARY_TERMS));
 
   let out = coverBlockXml(tender, "Cahier des charges");
+  out += tocBlockXml(c.toc());
+  out += pageBreak();
+  out += c.body();
+  return out;
+}
+
+// Structure dédiée aux marchés de support/maintenance (reconduction d'un contrat sur un périmètre
+// existant) — distincte de buildCahierDesChargesBody (acquisition) : pas de mise en service/VA-VSR,
+// mais une fourniture de services, des exigences de niveau de service (SLA) et une facturation
+// récurrente. Les grilles SLA et tarifaires sont des squelettes [À COMPLÉTER PAR ACHATS] : les
+// niveaux d'urgence/priorité et les profils d'intervenants dépendent du marché et ne sont jamais
+// déduits.
+function buildMaintenanceCDCBody(tender, schema, values) {
+  const v = (key) => { const s = schema.find(x => x.key === key); const val = values[key] !== undefined ? values[key] : s?.seed; return val && val.trim() ? val : A_COMPLETER; };
+  const c = makeChapterBuilder();
+
+  // 1. Introduction
+  c.H("1. Introduction", 1, "b_mcdc_1");
+  c.H("1.1. Objet du document", 2, "b_mcdc_11");
+  c.raw(para(`${tender.object || A_COMPLETER}\nLe cahier des charges précise les caractéristiques et objectifs principaux du marché, et décrit les exigences qui devront être remplies durant l'exécution des prestations.`));
+  c.H("1.2. Étapes à suivre par le soumissionnaire", 2, "b_mcdc_12");
+  c.H("1.2.1. Étape 1", 3, "b_mcdc_121");
+  c.raw(para("Pour chaque groupe d'exigences, le soumissionnaire décrit sous la rubrique « Réponse » la solution proposée, en démontrant explicitement la compréhension et la prise en compte de l'exigence. Les réserves éventuelles sont mentionnées clairement."));
+  c.H("1.2.2. Étape 2", 3, "b_mcdc_122");
+  c.raw(para("Le soumissionnaire renseigne la rubrique « Conformité » en mentionnant CO, PC ou NC (voir convention ci-dessous). À défaut de précision, l'exigence est considérée comme non conforme. Pour une exigence essentielle, seule la mention CO est autorisée — toute autre mention peut entraîner l'élimination automatique de l'offre."));
+  c.H("1.2.3. Étape 3", 3, "b_mcdc_123");
+  c.raw(para("Après avoir complété l'ensemble des rubriques, le soumissionnaire date et signe le document."));
+  c.H("1.3. Convention de présentation des exigences", 2, "b_mcdc_13");
+  c.raw(para("Chaque exigence est présentée sous forme de fiche (référence, caractère essentiel, description, remarque, criticité, conformité, réponse). Les niveaux de conformité possibles sont :"));
+  c.raw(conformiteLegendXml());
+
+  // 2. Présentation générale
+  c.H("2. Présentation générale", 1, "b_mcdc_2");
+  c.raw(para("Ce chapitre présente les principaux besoins et grandes caractéristiques des services à mettre en œuvre. En cas de contradiction avec les spécifications détaillées, ces dernières priment."));
+  c.H("2.1. Situation actuelle", 2, "b_mcdc_21");
+  c.raw(para(v("situation")));
+  c.H("2.2. Enjeux", 2, "b_mcdc_22");
+  c.raw(para(v("enjeux")));
+  c.H("2.3. Objectifs", 2, "b_mcdc_23");
+  c.raw(para(v("objectifs")));
+  c.H("2.4. Contraintes", 2, "b_mcdc_24");
+  c.H("2.4.1. Cadre légal", 3, "b_mcdc_241");
+  c.raw(para(v("cadre_legal")));
+  c.H("2.4.2. Contraintes normatives et standards", 3, "b_mcdc_242");
+  c.raw(para("Le soumissionnaire s'engage à fournir des prestations respectant l'état de l'art, et à respecter (ou faire respecter par ses sous-traitants) les normes et standards en vigueur dans le domaine, notamment en matière de gestion des services (ex. ISO 20000) et de sécurité de l'information."));
+  c.H("2.4.3. Contraintes organisationnelles et logistiques", 3, "b_mcdc_243");
+  c.raw(para(A_COMPLETER));
+  c.H("2.4.4. Contraintes sécurité de l'information", 3, "b_mcdc_244");
+  c.raw(para("Le soumissionnaire met en œuvre les mesures de sécurité de l'information adaptées à la criticité du périmètre couvert, conformément à la politique de sécurité de l'information de l'organisation."));
+  c.H("2.5. Offre de base sans options", 2, "b_mcdc_25");
+  c.raw(para(v("offre_base")));
+  c.raw(para("Le présent appel d'offre comprend un volet unique constituant l'offre de base ; aucune option n'y est associée. L'adjudication s'exerce sur l'offre de base intégrale."));
+
+  // 3. Fourniture de services
+  const byCat = tender.requirements.filter(r => r.includeInCDC !== false).reduce((acc, r) => { (acc[r.category] = acc[r.category] || []).push(r); return acc; }, {});
+  c.H("3. Fourniture de services", 1, "b_mcdc_3");
+  c.raw(para("Le tableau ci-après liste les grandes catégories de services attendus dans le cadre du présent appel d'offres ; le détail des exigences associées à chaque catégorie est précisé au chapitre 4."));
+  c.raw(docTable(["Catégorie de service", "Nombre d'exigences associées"],
+    Object.keys(byCat).length ? Object.entries(byCat).map(([cat, reqs]) => [cat, String(reqs.length)]) : [[A_COMPLETER, ""]]));
+
+  // 4. Exigences relatives à l'exécution des services (dont SLA)
+  c.H("4. Exigences relatives à l'exécution des services", 1, "b_mcdc_4");
+  c.H("4.1. Communication", 2, "b_mcdc_41");
+  c.raw(para("La communication entre l'organisation et le soumissionnaire doit être réalisée en langue française, sauf lorsqu'une communication implique directement un tiers (ex. éditeur/constructeur) dans le cadre du traitement d'un incident."));
+  c.H("4.2. Accords de niveau de service (SLA)", 2, "b_mcdc_42");
+  c.raw(para("Le traitement des incidents repose sur les niveaux d'urgence et de priorité définis ci-dessous."));
+  c.raw(docTable(["Niveau d'urgence", "Définition", "Délai de prise en charge", "Délai de résolution cible"], [
+    ["Critique", A_COMPLETER, A_COMPLETER, A_COMPLETER],
+    ["Haute", A_COMPLETER, A_COMPLETER, A_COMPLETER],
+    ["Normale", A_COMPLETER, A_COMPLETER, A_COMPLETER],
+    ["Basse", A_COMPLETER, A_COMPLETER, A_COMPLETER],
+  ]));
+  c.raw(para("La priorité de traitement d'un incident résulte du croisement entre son niveau d'urgence et son impact (étendue des utilisateurs ou services affectés), selon une matrice à définir par l'adjudicateur.", { italic: true, size: 18 }));
+  let sub = 2;
+  if (Object.keys(byCat).length === 0) {
+    sub++;
+    c.H(`4.${sub}. Exigences détaillées`, 2, "b_mcdc_4_req");
+    c.raw(para(A_COMPLETER));
+  } else {
+    Object.entries(byCat).forEach(([cat, reqs]) => {
+      sub++;
+      c.H(`4.${sub}. ${cat}`, 2, `b_mcdc_4_${slug(cat)}`);
+      c.raw(para(`Le soumissionnaire répond à chacune des ${reqs.length} exigence(s) ci-dessous dans l'onglet « ${cat} » du cahier de réponses joint (colonnes Réponse et Justificatif / commentaire), en respectant la convention définie au chapitre 1.3.`, { italic: true, size: 18 }));
+      reqs.forEach(r => { c.raw(requirementCardXml(r)); });
+    });
+  }
+
+  // 5. Exigences relatives à la planification
+  c.H("5. Exigences relatives à la planification", 1, "b_mcdc_5");
+  c.raw(para(v("planification_service")));
+  c.raw(docTable(["Étape", "Date"], [
+    ["Lancement de l'AO", tender.dateLaunch || A_COMPLETER],
+    ["Clôture de la réception des offres", tender.dateClose || A_COMPLETER],
+    ["Décision d'adjudication", tender.dateDecision || A_COMPLETER],
+    ["Démarrage des prestations", A_COMPLETER],
+    ["Revue périodique du contrat", A_COMPLETER],
+  ]));
+
+  // 6. Exigences réglementaires
+  c.H("6. Exigences réglementaires", 1, "b_mcdc_6");
+  c.H("6.1. Contraintes réglementaires du présent appel d'offre", 2, "b_mcdc_61");
+  c.raw(para(v("contraintes_reg")));
+  c.raw(para("Les prestations sont soumises au mode forfaitaire avec obligation de résultats. Les offres sont fermes, non révisables. La langue du projet est le français."));
+  c.H("6.2. Point de contact principal", 2, "b_mcdc_62");
+  c.raw(para(`Acheteur en charge : ${tender.buyer || A_COMPLETER}`));
+
+  // 7. Coûts et plan de règlement
+  c.H("7. Coûts et plan de règlement", 1, "b_mcdc_7");
+  c.H("7.1. Coûts", 2, "b_mcdc_71");
+  c.H("7.1.1. Offre de base", 3, "b_mcdc_711");
+  c.raw(docTable(["Poste", "Montant HT (CHF)"], [
+    ["Maintenance matérielle et logicielle (annuelle)", A_COMPLETER],
+    ["Guichet unique de support (annuel)", A_COMPLETER],
+    ["Suivi et conseil technique (annuel)", A_COMPLETER],
+    ["Provision annuelle de prestations d'assistance", A_COMPLETER],
+    ["Total offre de base", A_COMPLETER],
+  ]));
+  c.H("7.2. Ventilation des prix", 2, "b_mcdc_72");
+  c.raw(para("Le soumissionnaire indique ci-dessous les tarifs journaliers par profil d'intervenant susceptible d'être mobilisé, tous frais inclus."));
+  c.raw(docTable(["Profil", "Tarif journalier HT (CHF)"], [[A_COMPLETER, A_COMPLETER]]));
+  c.H("7.3. Modalités de paiement", 2, "b_mcdc_73");
+  c.raw(para(v("paiement")));
+  c.raw(para("Les prestations forfaitaires (maintenance, guichet de support, suivi technique, provision d'assistance) sont facturées annuellement, en début de chaque année contractuelle. Les prestations complémentaires (dépassements, régie) sont facturées sur la base de relevés mensuels."));
+  c.H("7.4. Résiliation anticipée", 2, "b_mcdc_74");
+  c.raw(para(v("resiliation")));
+  c.H("7.5. Pénalités de rupture de continuité du support", 2, "b_mcdc_75");
+  c.raw(para("En cas d'adjudication tardive remettant en cause la continuité des contrats de support déjà en place, les pénalités de rupture de continuité éventuellement dues sont prises en charge selon les modalités à préciser par l'adjudicateur ; le soumissionnaire indique une provision estimative de ces pénalités au chapitre 7.1.1."));
+  c.H("7.6. Résiliation / Pénalités de retard", 2, "b_mcdc_76");
+  c.raw(para(A_COMPLETER));
+
+  // 8. Annexes
+  c.H("8. Annexes", 1, "b_mcdc_8");
+  c.raw(para("Le périmètre couvert par le présent contrat (inventaire des équipements, logiciels ou services concernés) est détaillé dans une annexe dédiée, à joindre au présent document."));
+
+  c.raw(pageBreak());
+  c.H("9. Glossaire & abréviations", 1, "b_mcdc_9");
+  c.raw(docTable(["Terme", "Définition"], GLOSSARY_TERMS));
+
+  let out = coverBlockXml(tender, "Cahier des charges — Support & maintenance");
   out += tocBlockXml(c.toc());
   out += pageBreak();
   out += c.body();
@@ -2190,6 +2337,14 @@ function DocStatusSelect({ value, onChange }) {
   </select>;
 }
 
+// Le cahier des charges se décline en deux structures bien distinctes selon la nature du marché :
+// "Acquisition" (achat/intégration d'une solution logicielle ou matérielle, avec mise en service,
+// VA/VSR, garantie) et "Maintenance / Support" (reconduction d'un contrat de maintenance ou de
+// support sur un périmètre existant, avec SLA, guichet de support, facturation annuelle récurrente).
+// Déduit par défaut du type de marché, mais toujours modifiable explicitement par l'utilisateur.
+function inferCdcKind(t) { return (t.type === "Maintenance" || t.type === "Services") ? "maintenance" : "acquisition"; }
+function cdcKindOf(t) { return t.cdcOptions?.kind || inferCdcKind(t); }
+
 // Modules optionnels du Cahier des charges — n'apparaissent dans le document que si cochés,
 // pour s'adapter à la nature réelle du besoin (licence, support, hébergement, contrat-cadre, projet phasé).
 const CDC_MODULES = [
@@ -2203,22 +2358,41 @@ const CDC_MODULES = [
 
 function CDCStructurePanel({ tender, updateTender }) {
   const options = tender.cdcOptions || {};
+  const kind = cdcKindOf(tender);
   function toggle(key) { updateTender(prev => ({ ...prev, cdcOptions: { ...(prev.cdcOptions || {}), [key]: !prev.cdcOptions?.[key] } })); }
+  function setKind(k) { updateTender(prev => ({ ...prev, cdcOptions: { ...(prev.cdcOptions || {}), kind: k } })); }
   return (
     <Card className="p-5 mb-3" style={{ backgroundColor: C.accentSoft, borderColor: C.accent }}>
-      <div className="text-sm font-semibold mb-1" style={{ color: C.ink }}>Structure du document</div>
-      <div className="text-xs mb-3" style={{ color: C.inkSoft }}>Cochez ce qui correspond à votre besoin : les sections concernées apparaîtront dans le document généré, les autres resteront masquées.</div>
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-        {CDC_MODULES.map(m => (
-          <label key={m.key} className="flex items-start gap-2 p-2 rounded cursor-pointer" style={{ backgroundColor: C.surface, border: `1px solid ${C.border}` }}>
-            <input type="checkbox" checked={!!options[m.key]} onChange={() => toggle(m.key)} className="mt-0.5" />
-            <div>
-              <div className="text-sm" style={{ color: C.ink }}>{m.label}</div>
-              <div className="text-xs" style={{ color: C.inkSoft }}>{m.hint}</div>
-            </div>
-          </label>
+      <div className="text-sm font-semibold mb-1" style={{ color: C.ink }}>Type de cahier des charges</div>
+      <div className="text-xs mb-3" style={{ color: C.inkSoft }}>Les deux structures sont très différentes (mise en service / VA-VSR pour une acquisition, contre SLA / guichet de support pour une maintenance) — choisissez celle qui correspond au marché.</div>
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mb-4">
+        {[
+          { v: "acquisition", label: "Acquisition logicielle / matérielle", hint: "Achat et intégration d'une solution : exigences détaillées par domaine, mise en service, garantie." },
+          { v: "maintenance", label: "Support & maintenance", hint: "Reconduction d'un contrat sur un périmètre existant : SLA, guichet de support, facturation récurrente." },
+        ].map(o => (
+          <button key={o.v} onClick={() => setKind(o.v)} className="text-left p-2 rounded" style={{ backgroundColor: kind === o.v ? C.accent : C.surface, border: `1px solid ${kind === o.v ? C.accent : C.border}` }}>
+            <div className="text-sm font-medium" style={{ color: kind === o.v ? "#fff" : C.ink }}>{o.label}</div>
+            <div className="text-xs" style={{ color: kind === o.v ? "#fff" : C.inkSoft, opacity: kind === o.v ? 0.9 : 1 }}>{o.hint}</div>
+          </button>
         ))}
       </div>
+      {kind === "acquisition" && (
+        <>
+          <div className="text-sm font-semibold mb-1" style={{ color: C.ink }}>Structure du document</div>
+          <div className="text-xs mb-3" style={{ color: C.inkSoft }}>Cochez ce qui correspond à votre besoin : les sections concernées apparaîtront dans le document généré, les autres resteront masquées.</div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+            {CDC_MODULES.map(m => (
+              <label key={m.key} className="flex items-start gap-2 p-2 rounded cursor-pointer" style={{ backgroundColor: C.surface, border: `1px solid ${C.border}` }}>
+                <input type="checkbox" checked={!!options[m.key]} onChange={() => toggle(m.key)} className="mt-0.5" />
+                <div>
+                  <div className="text-sm" style={{ color: C.ink }}>{m.label}</div>
+                  <div className="text-xs" style={{ color: C.inkSoft }}>{m.hint}</div>
+                </div>
+              </label>
+            ))}
+          </div>
+        </>
+      )}
     </Card>
   );
 }
@@ -2231,7 +2405,7 @@ const CDC_FIELD_MODULE = {
 function TextDocEditor({ doc, tender, updateTender, onSave, onGenerate }) {
   const rawSchema = (TEXT_SCHEMAS[doc.name] || genericSchema)(tender);
   const schema = doc.name === "Cahier des charges"
-    ? rawSchema.filter(s => !CDC_FIELD_MODULE[s.key] || tender.cdcOptions?.[CDC_FIELD_MODULE[s.key]])
+    ? rawSchema.filter(s => (!s.kind || s.kind === cdcKindOf(tender)) && (!CDC_FIELD_MODULE[s.key] || tender.cdcOptions?.[CDC_FIELD_MODULE[s.key]]))
     : rawSchema;
   const values = doc.content?.sections || {};
   const [drafting, setDrafting] = useState(false);
