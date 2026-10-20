@@ -847,19 +847,25 @@ function makeChapterBuilder() {
   return { H, toc: () => toc, body: () => body, raw: (x) => { body += x; } };
 }
 function pageBreak() { return `<w:p><w:r><w:br w:type="page"/></w:r></w:p>`; }
-function docTable(headerCells, rows) {
+// widths : largeurs relatives optionnelles par colonne (ex. [1, 3, 1, 1.5]) — sans quoi les colonnes
+// sont réparties également, ce qui donne des tableaux mal équilibrés dès qu'une colonne courte
+// (ID, Priorité…) côtoie une colonne de texte long (Exigence, Description…).
+function docTable(headerCells, rows, widths) {
   const cols = headerCells.length || 1;
   const totalWidth = 9020;
-  const colWidth = Math.floor(totalWidth / cols);
-  const grid = Array(cols).fill(0).map(() => `<w:gridCol w:w="${colWidth}"/>`).join("");
+  const ratios = (widths && widths.length === cols) ? widths : Array(cols).fill(1);
+  const ratioSum = ratios.reduce((a, b) => a + b, 0);
+  const colWidths = ratios.map(r => Math.floor((totalWidth * r) / ratioSum));
+  colWidths[colWidths.length - 1] += totalWidth - colWidths.reduce((a, b) => a + b, 0);
+  const grid = colWidths.map(w => `<w:gridCol w:w="${w}"/>`).join("");
   const borders = `<w:tblBorders><w:top w:val="single" w:sz="4" w:color="${DOCX_BORDER}"/><w:left w:val="single" w:sz="4" w:color="${DOCX_BORDER}"/><w:bottom w:val="single" w:sz="4" w:color="${DOCX_BORDER}"/><w:right w:val="single" w:sz="4" w:color="${DOCX_BORDER}"/><w:insideH w:val="single" w:sz="4" w:color="${DOCX_BORDER}"/><w:insideV w:val="single" w:sz="4" w:color="${DOCX_BORDER}"/></w:tblBorders>`;
-  function cell(text, opts = {}) {
+  function cell(text, w, opts = {}) {
     const shd = opts.shade ? `<w:shd w:val="clear" w:fill="${opts.shade}"/>` : "";
-    return `<w:tc><w:tcPr><w:tcW w:w="${colWidth}" w:type="dxa"/>${shd}<w:vAlign w:val="center"/></w:tcPr><w:p>${runsForText(text, { bold: opts.bold, size: 18, color: opts.color })}</w:p></w:tc>`;
+    return `<w:tc><w:tcPr><w:tcW w:w="${w}" w:type="dxa"/>${shd}<w:vAlign w:val="center"/></w:tcPr><w:p>${runsForText(text, { bold: opts.bold, size: 18, color: opts.color })}</w:p></w:tc>`;
   }
   const headerTrPr = headerCells.some(h => h) ? `<w:trPr><w:tblHeader/></w:trPr>` : "";
-  const headerTr = headerCells.some(h => h) ? `<w:tr>${headerTrPr}${headerCells.map(h => cell(h, { bold: true, shade: DOCX_ORANGE, color: "FFFFFF" })).join("")}</w:tr>` : "";
-  const dataRows = rows.map((r, i) => `<w:tr>${r.map(v => cell(v, i % 2 === 1 ? { shade: "FBFAF8" } : {})).join("")}</w:tr>`).join("");
+  const headerTr = headerCells.some(h => h) ? `<w:tr>${headerTrPr}${headerCells.map((h, i) => cell(h, colWidths[i], { bold: true, shade: DOCX_ORANGE, color: "FFFFFF" })).join("")}</w:tr>` : "";
+  const dataRows = rows.map((r, i) => `<w:tr>${r.map((v, j) => cell(v, colWidths[j], i % 2 === 1 ? { shade: "FBFAF8" } : {})).join("")}</w:tr>`).join("");
   return `<w:tbl><w:tblPr><w:tblW w:w="${totalWidth}" w:type="dxa"/>${borders}</w:tblPr><w:tblGrid>${grid}</w:tblGrid>${headerTr}${dataRows}</w:tbl><w:p/>`;
 }
 function shadedBox(lines, fill = DOCX_GRAY_SOFT) {
@@ -939,7 +945,7 @@ function conformiteLegendXml() {
     ["CO", "Conforme à l'exigence\nLe soumissionnaire n'a aucune réserve à émettre par rapport à l'exigence stipulée dans la description de l'ouvrage (cahier des charges)."],
     ["PC", "Partiellement conforme à l'exigence\nLe soumissionnaire ne peut pas répondre exactement à l'exigence stipulée dans la description de l'ouvrage (cahier des charges). La partie de l'exigence ne pouvant pas être remplie est explicitée en Réponse."],
     ["NC", "Non conforme à l'exigence\nLe soumissionnaire ne peut pas du tout répondre à l'exigence stipulée dans la description de l'ouvrage (cahier des charges). Une explication peut être fournie en Réponse."],
-  ]);
+  ], [1, 6]);
 }
 
 function packageDocx(bodyXml, filename, tender) {
@@ -975,7 +981,7 @@ const GLOSSARY_TERMS = [
 function glossaryXml() {
   let x = pageBreak();
   x += heading("Glossaire & abréviations", 1);
-  x += docTable(["Terme", "Définition"], GLOSSARY_TERMS);
+  x += docTable(["Terme", "Définition"], GLOSSARY_TERMS, [1, 3]);
   return x;
 }
 
@@ -1174,7 +1180,7 @@ function buildCahierDesChargesBody(tender, schema, values) {
 
   c.raw(pageBreak());
   c.H("7. Glossaire & abréviations", 1, "b_cdc_7");
-  c.raw(docTable(["Terme", "Définition"], GLOSSARY_TERMS));
+  c.raw(docTable(["Terme", "Définition"], GLOSSARY_TERMS, [1, 3]));
 
   let out = coverBlockXml(tender, "Cahier des charges");
   out += tocBlockXml(c.toc());
@@ -1262,14 +1268,14 @@ function buildMaintenanceCDCBody(tender, schema, values) {
   c.raw(para("Définition des niveaux d'urgence :", { italic: true, size: 18 }));
   c.raw(docTable(["Niveau d'urgence", "Définition"], [
     ["Critique", A_COMPLETER], ["Haute", A_COMPLETER], ["Normale", A_COMPLETER], ["Basse", A_COMPLETER],
-  ]));
+  ], [1, 3]));
   c.raw(para("Niveaux de priorité de traitement des incidents :", { italic: true, size: 18 }));
   c.raw(docTable(["Niveau de priorité", "Prise en charge de l'incident", "Temps de résolution cible", "Engagements"], [
     ["P1", A_COMPLETER, A_COMPLETER, A_COMPLETER],
     ["P2", A_COMPLETER, A_COMPLETER, A_COMPLETER],
     ["P3", A_COMPLETER, A_COMPLETER, A_COMPLETER],
     ["P4", A_COMPLETER, A_COMPLETER, A_COMPLETER],
-  ]));
+  ], [1, 1.6, 1.6, 1.8]));
   c.raw(para("La priorité attribuée à un incident résulte du croisement entre son niveau d'urgence et son impact (étendue des utilisateurs ou services affectés), selon une matrice à définir par l'adjudicateur.", { italic: true, size: 18 }));
   c.raw(requirementCardXml({
     category: "Offre de base", description: "Accord de niveaux de service", mandatory: true,
@@ -1325,7 +1331,7 @@ function buildMaintenanceCDCBody(tender, schema, values) {
 
   c.raw(pageBreak());
   c.H("9. Glossaire & abréviations", 1, "b_mcdc_9");
-  c.raw(docTable(["Terme", "Définition"], GLOSSARY_TERMS));
+  c.raw(docTable(["Terme", "Définition"], GLOSSARY_TERMS, [1, 3]));
 
   let out = coverBlockXml(tender, "Cahier des charges — Support & maintenance");
   out += tocBlockXml(c.toc());
@@ -1377,7 +1383,8 @@ function buildEtudeComparativeCDCBody(tender, schema, values) {
     Object.entries(byCat).forEach(([cat, reqs]) => {
       c.raw(para(cat, { bold: true, size: 20, color: DOCX_NAVY }));
       c.raw(docTable(["ID", "Exigence", "Priorité", "Preuve attendue"],
-        reqs.map(r => [r.id, r.description, r.criticality || "Normale", r.verificationMethod || A_COMPLETER])));
+        reqs.map(r => [r.id, r.description, r.criticality || "Normale", r.verificationMethod || A_COMPLETER]),
+        [0.8, 3.4, 1, 1.8]));
     });
   }
 
@@ -1386,7 +1393,7 @@ function buildEtudeComparativeCDCBody(tender, schema, values) {
 
   c.H("6. Protocole d'évaluation et grille de notation", 1, "b_etu_6");
   c.raw(para(v("protocole_poc")));
-  c.raw(docTable(["Critère", "Pondération", "Note (sur 5)", "Commentaire"], [[A_COMPLETER, A_COMPLETER, A_COMPLETER, A_COMPLETER]]));
+  c.raw(docTable(["Critère", "Pondération", "Note (sur 5)", "Commentaire"], [[A_COMPLETER, A_COMPLETER, A_COMPLETER, A_COMPLETER]], [1.6, 1, 1, 2.4]));
 
   c.H("7. Livrables attendus", 1, "b_etu_7");
   c.raw(para(v("livrables")));
@@ -1409,13 +1416,13 @@ function buildEtudeComparativeCDCBody(tender, schema, values) {
     ["Majeure", "Exigence importante, attendue mais négociable selon le contexte."],
     ["Normale", "Exigence standard, apportant une amélioration attendue."],
     ["Souhaitable", "Exigence facultative, un atout supplémentaire non obligatoire."],
-  ]));
+  ], [1, 3]));
   c.H("Annexe B — Modèle de matrice de réponse", 1, "b_etu_b");
   c.raw(para("Pour chaque exigence, la solution ou l'équipe évaluée indique son niveau de conformité et sa réponse, selon la convention suivante :"));
   c.raw(conformiteLegendXml());
   c.raw(pageBreak());
   c.H("Annexe C — Glossaire", 1, "b_etu_c");
-  c.raw(docTable(["Terme", "Définition"], GLOSSARY_TERMS));
+  c.raw(docTable(["Terme", "Définition"], GLOSSARY_TERMS, [1, 3]));
 
   let out = coverBlockXml(tender, "Cahier des charges — Étude comparative");
   out += tocBlockXml(c.toc());
@@ -1513,7 +1520,7 @@ function buildProcedureAOBody(tender, schema, values) {
 
   c.raw(pageBreak());
   c.H("Glossaire & abréviations", 1, "b_pao_gloss");
-  c.raw(docTable(["Terme", "Définition"], GLOSSARY_TERMS));
+  c.raw(docTable(["Terme", "Définition"], GLOSSARY_TERMS, [1, 3]));
 
   let out = coverBlockXml(tender, "Procédure AO");
   out += tocBlockXml(c.toc());
@@ -2549,6 +2556,24 @@ function TextDocEditor({ doc, tender, updateTender, onSave, onGenerate }) {
   function get(key, seed) { return values[key] !== undefined ? values[key] : seed; }
   function set(key, val) { onSave({ sections: { ...values, [key]: val } }); }
 
+  // Étiquette affichée sans l'annotation de contexte en fin de libellé (ex. "(cahier de
+  // maintenance/support)", "(si module activé)") — redondante puisque le champ est déjà filtré
+  // selon le type de CDC et les modules cochés.
+  function cleanLabel(label) { return label.replace(/\s*\([^)]*\)\s*$/, ""); }
+  // Regroupe les champs par chapitre (préfixe numérique du libellé, ex. "2" pour "2.2. Enjeux"),
+  // dans l'ordre d'apparition, pour donner une structure visuelle au formulaire plutôt qu'une
+  // liste plate de 15-20 champs.
+  const groups = [];
+  const groupIndex = {};
+  schema.forEach(s => {
+    const m = s.label.match(/^(\d+)\./);
+    const key = m ? m[1] : "—";
+    if (!(key in groupIndex)) { groupIndex[key] = groups.length; groups.push({ key, items: [] }); }
+    groups[groupIndex[key]].items.push(s);
+  });
+  const isUnfilled = v => { const t = (v || "").trim(); return !t || t.includes("[À COMPLÉTER") || t.includes("[À VALIDER"); };
+  const remaining = schema.filter(s => isUnfilled(get(s.key, s.seed))).length;
+
   async function autoDraft() {
     setDrafting(true); setDraftError("");
     try {
@@ -2579,18 +2604,30 @@ function TextDocEditor({ doc, tender, updateTender, onSave, onGenerate }) {
         </div>
       </div>
       {draftError && <div className="text-xs mb-2" style={{ color: C.red }}>{draftError}</div>}
-      {TEXT_SCHEMAS[doc.name] && (
-        <div className="flex items-center gap-1.5 mb-4 text-xs" style={{ color: C.accentDark }}>
-          <ShieldCheck size={12} /> Structure basée sur le template officiel Achats
+      <div className="flex items-center justify-between mb-4">
+        {TEXT_SCHEMAS[doc.name]
+          ? <div className="flex items-center gap-1.5 text-xs" style={{ color: C.accentDark }}><ShieldCheck size={12} /> Structure basée sur le template officiel Achats</div>
+          : <span />}
+        <div className="text-xs font-medium" style={{ color: remaining === 0 ? C.green : C.inkSoft }}>
+          {remaining === 0 ? "Toutes les sections sont renseignées" : `${schema.length - remaining} / ${schema.length} sections renseignées`}
         </div>
-      )}
-      {!TEXT_SCHEMAS[doc.name] && <div className="mb-4" />}
-      <div className="space-y-4">
-        {schema.map(s => (
-          <label key={s.key} className="block text-sm">
-            <div className="mb-1 font-medium" style={{ color: C.inkSoft }}>{s.label}</div>
-            <textarea rows={3} value={get(s.key, s.seed)} onChange={e => set(s.key, e.target.value)} className="w-full px-3 py-2 rounded text-sm outline-none resize-y" style={{ border: `1px solid ${C.border}` }} />
-          </label>
+      </div>
+      <div className="space-y-6">
+        {groups.map(g => (
+          <div key={g.key}>
+            {groups.length > 1 && <div className="text-xs font-semibold uppercase tracking-wide mb-2 pb-1" style={{ color: C.inkSoft, borderBottom: `1px solid ${C.borderSoft}` }}>{g.key === "—" ? "Autres sections" : `Chapitre ${g.key}`}</div>}
+            <div className="space-y-4">
+              {g.items.map(s => (
+                <label key={s.key} className="block text-sm">
+                  <div className="mb-1 font-medium flex items-center gap-1.5" style={{ color: C.inkSoft }}>
+                    {cleanLabel(s.label)}
+                    {isUnfilled(get(s.key, s.seed)) && <span className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: C.amber }} title="À compléter" />}
+                  </div>
+                  <textarea rows={3} value={get(s.key, s.seed)} onChange={e => set(s.key, e.target.value)} className="w-full px-3 py-2 rounded text-sm outline-none resize-y" style={{ border: `1px solid ${C.border}` }} />
+                </label>
+              ))}
+            </div>
+          </div>
         ))}
       </div>
       <div className="flex justify-end mt-5">
@@ -2823,11 +2860,36 @@ const STANDARD_REQUIREMENT_CATEGORIES = [
   "Réglementaire SI", "Standards IT et processus informatiques",
 ];
 
+// Exigences types pour un CDC de support/maintenance — proposées via sélection (pas d'ajout en bloc),
+// pour laisser le chef de projet choisir ce qui correspond réellement à son marché.
+const MAINTENANCE_REQUIREMENT_SEEDS = [
+  {
+    description: "Maintenance matérielle et logicielle des composants couverts",
+    detail: "Le soumissionnaire fournit une prestation de maintenance matérielle et logicielle pour l'ensemble des composants couverts, tels que décrits dans l'inventaire du périmètre annexé.\nCette prestation couvre notamment :\n- Le remplacement du matériel défectueux par un matériel équivalent, dans un délai à préciser par le soumissionnaire après déclaration de la panne auprès du point de contact support.\n- La fourniture des correctifs et des versions logicielles majeures et mineures pour l'ensemble des composants couverts.\n- Le suivi de l'inventaire du matériel et des logiciels couverts, mis à jour après chaque échange de matériel ou acquisition.\n- La mise à jour des documents d'exploitation en cas de changement d'organisation ou de procédure pendant la durée du contrat.",
+    remark: "La fourniture de cette prestation est soumise au fait que les matériels et logiciels concernés n'aient pas atteint leur date de fin de vie publiée par le constructeur.",
+  },
+  {
+    description: "Guichet unique de support",
+    detail: "Le soumissionnaire met à disposition un point de contact unique pour l'ensemble des demandes liées à l'exploitation du périmètre couvert.\nCe point de contact, accessible par portail web, e-mail et téléphone, permet de :\n- Déclarer et suivre un incident (panne, dysfonctionnement isolé ou général), au travers de tickets.\n- Formuler et suivre une demande d'assistance sur site ou à distance.\nLe point de contact assure le suivi et la relance des demandes jusqu'à leur résolution, et gère l'escalade vers le support du fabricant si nécessaire.\nSes horaires de disponibilité (standard et/ou étendus pour les incidents critiques impactant l'exploitation) sont à préciser par le soumissionnaire.",
+  },
+  {
+    description: "Suivi et conseil technique régulier",
+    detail: "Le soumissionnaire planifie, selon une fréquence à définir, une journée de suivi sur site ou à distance avec l'équipe technique de l'organisation, portant notamment sur :\n- Une revue des incidents survenus sur la période écoulée et des recommandations pour éviter leur répétition.\n- Une revue des nouvelles versions mises à disposition par le constructeur et de l'opportunité de leur déploiement.\n- Des conseils sur les bonnes pratiques de gestion et d'architecture de l'infrastructure couverte.\nUn rapport écrit détaillant les actions menées est remis à l'organisation à l'issue de chaque intervention.",
+  },
+  {
+    description: "Prestation d'assistance en régie",
+    detail: "Le soumissionnaire propose une provision annuelle d'heures de prestations d'assistance technique, mobilisable à la demande de l'organisation pour des besoins tels que : mise à jour de composants, modifications mineures de configuration ou de topologie, déploiement d'une nouvelle fonctionnalité, ou dépannage avancé.\nCes prestations sont déclenchées uniquement à la demande de l'organisation, selon des délais de prévenance à préciser par le soumissionnaire.\nLorsque la provision annuelle est épuisée, le soumissionnaire propose une extension selon un tarif à décrire dans sa réponse.",
+  },
+];
+
 function RequirementsTab({ t, updateTender }) {
   const byCat = {}; t.requirements.forEach(r => { (byCat[r.category] = byCat[r.category] || []).push(r); });
   const [form, setForm] = useState({ category: STANDARD_REQUIREMENT_CATEGORIES[0], customCategory: "", description: "", detail: "", remark: "", criticality: "Normale", mandatory: true, verificationMethod: "", includeInCDC: true });
+  const [formOpen, setFormOpen] = useState(t.requirements.length === 0);
   const [suggesting, setSuggesting] = useState(false);
   const [suggestError, setSuggestError] = useState("");
+  const [seedPickerOpen, setSeedPickerOpen] = useState(false);
+  const [seedChecked, setSeedChecked] = useState(() => MAINTENANCE_REQUIREMENT_SEEDS.map(() => true));
   const [seedingMaintenance, setSeedingMaintenance] = useState(false);
   function exportExcel() {
     const header = ["ID", "Catégorie", "Exigence", "Criticité", "Obligatoire", "Méthode de vérification", "Dans le CDC"];
@@ -2837,7 +2899,7 @@ function RequirementsTab({ t, updateTender }) {
   async function suggestRequirements() {
     setSuggesting(true); setSuggestError("");
     try {
-      const prompt = `Tu es un assistant Achats. À partir du contexte d'appel d'offres ci-dessous, propose 5 à 8 exigences pertinentes à ajouter à la liste, en les répartissant dans les types standards suivants lorsque pertinent : ${STANDARD_REQUIREMENT_CATEGORIES.join(", ")} (ou un autre type court si aucun ne convient). ` +
+      const prompt = `Tu es un assistant Achats. À partir du contexte d'appel d'offres ci-dessous, propose 3 à 5 exigences pertinentes, en te limitant aux plus essentielles — pas une liste exhaustive : un cahier des charges réaliste compte une quinzaine à une trentaine d'exigences au total, pas des centaines. Répartis-les dans les types standards suivants lorsque pertinent : ${STANDARD_REQUIREMENT_CATEGORIES.join(", ")} (ou un autre type court si aucun ne convient). ` +
         `Pour chaque exigence, rédige un titre court ("description") ET un paragraphe détaillé ("detail", 3 à 8 lignes, avec des tirets pour lister les points couverts si pertinent) qui sera repris tel quel dans la fiche d'exigence du cahier des charges. ` +
         `N'invente aucun chiffre, délai ou règle spécifique non mentionné dans le contexte ci-dessous ; reste générique et professionnel, et utilise la formule exacte "[À COMPLÉTER PAR ACHATS]" à la place de tout chiffre ou délai que tu ne peux pas déduire du contexte. Réponds UNIQUEMENT avec un tableau JSON d'objets, sans texte autour, où chaque objet a les clés : "category" (string courte), "description" (string, titre court), "detail" (string, paragraphe détaillé), "remark" (string courte, optionnelle, ou ""), "criticality" (une valeur parmi Bloquante, Critique, Majeure, Normale, Souhaitable), "mandatory" (booléen), "verificationMethod" (string courte).\n\n` +
         `Titre : ${t.title}\nObjet : ${t.object}\nContexte : ${t.need.context}\nObjectifs : ${t.need.objectives}\nPérimètre inclus : ${(t.scope.included || []).join(", ")}\nExigences déjà présentes : ${t.requirements.map(r => r.description).join(" | ") || "aucune"}`;
@@ -2868,28 +2930,11 @@ function RequirementsTab({ t, updateTender }) {
     upsertLibraryItem("requirement", { category, description: form.description, criticality: form.criticality, mandatory: form.mandatory, verification_method: form.verificationMethod }).catch(() => {});
     setForm(f => ({ ...f, description: "", detail: "", remark: "", verificationMethod: "" }));
   }
-  function seedMaintenanceRequirements() {
+  function addSelectedMaintenanceSeeds() {
     setSeedingMaintenance(true);
     try {
-      const seeds = [
-        {
-          description: "Maintenance matérielle et logicielle des composants couverts",
-          detail: "Le soumissionnaire fournit une prestation de maintenance matérielle et logicielle pour l'ensemble des composants couverts, tels que décrits dans l'inventaire du périmètre annexé.\nCette prestation couvre notamment :\n- Le remplacement du matériel défectueux par un matériel équivalent, dans un délai à préciser par le soumissionnaire après déclaration de la panne auprès du point de contact support.\n- La fourniture des correctifs et des versions logicielles majeures et mineures pour l'ensemble des composants couverts.\n- Le suivi de l'inventaire du matériel et des logiciels couverts, mis à jour après chaque échange de matériel ou acquisition.\n- La mise à jour des documents d'exploitation en cas de changement d'organisation ou de procédure pendant la durée du contrat.",
-          remark: "La fourniture de cette prestation est soumise au fait que les matériels et logiciels concernés n'aient pas atteint leur date de fin de vie publiée par le constructeur.",
-        },
-        {
-          description: "Guichet unique de support",
-          detail: "Le soumissionnaire met à disposition un point de contact unique pour l'ensemble des demandes liées à l'exploitation du périmètre couvert.\nCe point de contact, accessible par portail web, e-mail et téléphone, permet de :\n- Déclarer et suivre un incident (panne, dysfonctionnement isolé ou général), au travers de tickets.\n- Formuler et suivre une demande d'assistance sur site ou à distance.\nLe point de contact assure le suivi et la relance des demandes jusqu'à leur résolution, et gère l'escalade vers le support du fabricant si nécessaire.\nSes horaires de disponibilité (standard et/ou étendus pour les incidents critiques impactant l'exploitation) sont à préciser par le soumissionnaire.",
-        },
-        {
-          description: "Suivi et conseil technique régulier",
-          detail: "Le soumissionnaire planifie, selon une fréquence à définir, une journée de suivi sur site ou à distance avec l'équipe technique de l'organisation, portant notamment sur :\n- Une revue des incidents survenus sur la période écoulée et des recommandations pour éviter leur répétition.\n- Une revue des nouvelles versions mises à disposition par le constructeur et de l'opportunité de leur déploiement.\n- Des conseils sur les bonnes pratiques de gestion et d'architecture de l'infrastructure couverte.\nUn rapport écrit détaillant les actions menées est remis à l'organisation à l'issue de chaque intervention.",
-        },
-        {
-          description: "Prestation d'assistance en régie",
-          detail: "Le soumissionnaire propose une provision annuelle d'heures de prestations d'assistance technique, mobilisable à la demande de l'organisation pour des besoins tels que : mise à jour de composants, modifications mineures de configuration ou de topologie, déploiement d'une nouvelle fonctionnalité, ou dépannage avancé.\nCes prestations sont déclenchées uniquement à la demande de l'organisation, selon des délais de prévenance à préciser par le soumissionnaire.\nLorsque la provision annuelle est épuisée, le soumissionnaire propose une extension selon un tarif à décrire dans sa réponse.",
-        },
-      ];
+      const seeds = MAINTENANCE_REQUIREMENT_SEEDS.filter((_, i) => seedChecked[i]);
+      if (!seeds.length) return;
       updateTender(prev => {
         const category = "Offre de base";
         const prefix = category.trim().slice(0, 3).toUpperCase();
@@ -2902,6 +2947,7 @@ function RequirementsTab({ t, updateTender }) {
         });
         return { ...prev, requirements: [...prev.requirements, ...newReqs] };
       });
+      setSeedPickerOpen(false);
     } finally { setSeedingMaintenance(false); }
   }
   function addFromLibrary(item) {
@@ -2916,26 +2962,64 @@ function RequirementsTab({ t, updateTender }) {
   function setCriticality(id, criticality) { updateTender(prev => ({ ...prev, requirements: prev.requirements.map(r => r.id === id ? { ...r, criticality } : r) })); }
   const inputStyle = { border: `1px solid ${C.border}` };
 
+  const total = t.requirements.length;
+  const byCrit = {};
+  t.requirements.forEach(r => { byCrit[r.criticality] = (byCrit[r.criticality] || 0) + 1; });
+
   return (
     <div className="space-y-4">
       <LibraryPicker kind="requirement" title="Réutiliser depuis un autre AO" onPick={addFromLibrary} />
+
+      {total > 0 && (
+        <Card className="px-5 py-3 flex flex-wrap items-center gap-x-5 gap-y-2">
+          <div className="text-sm font-semibold" style={{ color: C.ink }}>{total} exigence{total > 1 ? "s" : ""}</div>
+          {Object.keys(CRITICALITY_META).filter(c => byCrit[c]).map(c => (
+            <div key={c} className="flex items-center gap-1.5 text-xs" style={{ color: C.inkSoft }}>
+              <span className="w-2 h-2 rounded-full" style={{ backgroundColor: CRITICALITY_META[c] }} />{byCrit[c]} {c}
+            </div>
+          ))}
+          {total > 30 && <div className="text-xs ml-auto" style={{ color: C.amber }}>Au-delà d'une trentaine, un CDC devient difficile à exploiter pour les Achats et les soumissionnaires — pensez à prioriser l'essentiel.</div>}
+        </Card>
+      )}
+
       <Card className="p-5">
-        <div className="flex items-start justify-between gap-3 mb-1">
-          <SectionTitle sub="Choisissez le type parmi les catégories standards utilisées dans les cahiers des charges — chaque exigence sera reprise automatiquement dans le cahier des charges et le cahier de réponses, sauf si vous décochez « Inclure dans le CDC ».">Ajouter une exigence</SectionTitle>
+        <div className="flex items-start justify-between gap-3">
+          <SectionTitle sub="Le contenu technique est porté par le chef de projet — les Achats n'ont pas la connaissance métier pour le faire à sa place.">Exigences</SectionTitle>
           <div className="flex items-center gap-2 shrink-0">
             {cdcKindOf(t) === "maintenance" && (
-              <button onClick={seedMaintenanceRequirements} disabled={seedingMaintenance}
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium disabled:opacity-40" style={{ border: `1px solid ${C.border}`, color: C.ink, backgroundColor: C.slateSoft }}>
+              <button onClick={() => setSeedPickerOpen(o => !o)}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium" style={{ border: `1px solid ${C.border}`, color: C.ink, backgroundColor: seedPickerOpen ? C.slateSoft : C.surface }}>
                 <Sparkles size={13} /> Exigences types maintenance/support
               </button>
             )}
             <button onClick={suggestRequirements} disabled={suggesting || !t.need.context} title={!t.need.context ? "Renseignez d'abord le besoin (onglet Besoin & périmètre)" : ""}
               className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium disabled:opacity-40" style={{ border: `1px solid ${C.accent}`, color: C.accentDark, backgroundColor: C.accentSoft }}>
-              <Sparkles size={13} /> {suggesting ? "Suggestion en cours…" : "Suggérer des exigences (IA)"}
+              <Sparkles size={13} /> {suggesting ? "Suggestion en cours…" : "Suggérer (IA)"}
             </button>
+            <GhostButton icon={Plus} onClick={() => setFormOpen(o => !o)}>{formOpen ? "Fermer" : "Ajouter"}</GhostButton>
           </div>
         </div>
-        {suggestError && <div className="text-xs mb-3" style={{ color: C.red }}>{suggestError}</div>}
+        {suggestError && <div className="text-xs mt-3" style={{ color: C.red }}>{suggestError}</div>}
+
+        {seedPickerOpen && (
+          <div className="mt-4 p-3 rounded" style={{ backgroundColor: C.slateSoft }}>
+            <div className="text-xs mb-2" style={{ color: C.inkSoft }}>Cochez celles qui correspondent réellement à ce marché — à adapter ensuite selon votre connaissance technique du périmètre.</div>
+            <div className="space-y-1.5">
+              {MAINTENANCE_REQUIREMENT_SEEDS.map((s, i) => (
+                <label key={s.description} className="flex items-start gap-2 text-sm cursor-pointer">
+                  <input type="checkbox" className="mt-0.5" checked={!!seedChecked[i]} onChange={() => setSeedChecked(prev => prev.map((v, j) => j === i ? !v : v))} />
+                  <span style={{ color: C.ink }}>{s.description}</span>
+                </label>
+              ))}
+            </div>
+            <div className="flex justify-end mt-3">
+              <PrimaryButton icon={Plus} disabled={seedingMaintenance || !seedChecked.some(Boolean)} onClick={addSelectedMaintenanceSeeds}>Ajouter la sélection</PrimaryButton>
+            </div>
+          </div>
+        )}
+
+        {formOpen && (
+        <div className="mt-4 pt-4" style={{ borderTop: `1px solid ${C.borderSoft}` }}>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <label className="text-sm"><div className="mb-1" style={{ color: C.inkSoft }}>Type d'exigence</div>
             <select value={form.category} onChange={e => setForm(f => ({ ...f, category: e.target.value }))} className="w-full px-3 py-2 rounded text-sm outline-none" style={inputStyle}>
@@ -2966,7 +3050,9 @@ function RequirementsTab({ t, updateTender }) {
             <label className="text-sm flex items-center gap-2"><input type="checkbox" checked={form.includeInCDC} onChange={e => setForm(f => ({ ...f, includeInCDC: e.target.checked }))} /> Inclure dans le CDC</label>
           </div>
         </div>
-        <div className="flex justify-end mt-4"><PrimaryButton icon={Plus} onClick={addRequirement}>Ajouter à la liste</PrimaryButton></div>
+        <div className="flex justify-end mt-4"><PrimaryButton icon={Plus} onClick={() => { addRequirement(); }}>Ajouter à la liste</PrimaryButton></div>
+        </div>
+        )}
       </Card>
 
       <Card>
