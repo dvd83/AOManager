@@ -720,7 +720,7 @@ function styledReportSheet(name, title, headers, dataRows, colWidths, dataValida
 // classeur exploitable directement par le comité d'évaluation et fait le lien explicite avec la
 // section « Exigences et spécifications » du cahier des charges (cf. buildCahierDesChargesBody).
 function downloadResponseSheetXLSX(filename, sheetName, requirements) {
-  const header = ["ID", "Exigence", "Criticité", "Obligatoire", "Réponse", "Justificatif / commentaire"];
+  const header = ["ID", "Exigence", "Criticité", "Obligatoire", "Conformité", "Commentaires"];
   const byCat = {};
   requirements.forEach(r => { (byCat[r.category] = byCat[r.category] || []).push(r); });
   const categories = Object.keys(byCat);
@@ -728,8 +728,8 @@ function downloadResponseSheetXLSX(filename, sheetName, requirements) {
     const reqs = byCat[cat] || [];
     const dataRows = reqs.map(r => [r.id, r.description, r.criticality, r.mandatory ? "Oui" : "Non", "", ""]);
     const lastRow = reqs.length + 2;
-    return styledReportSheet(cat, cat.toUpperCase(), header, dataRows, [12, 55, 14, 12, 18, 45],
-      reqs.length ? [{ sqref: `E3:E${lastRow}`, list: ["Oui", "Non", "Partiellement"] }] : []);
+    return styledReportSheet(cat, cat.toUpperCase(), header, dataRows, [12, 55, 14, 12, 22, 45],
+      reqs.length ? [{ sqref: `E3:E${lastRow}`, list: ["Conforme", "Partiellement conforme", "Non conforme"] }] : []);
   });
   downloadXLSX(filename, sheets);
 }
@@ -917,7 +917,8 @@ function labelValueTable(rows) {
 // Fiche d'exigence au format officiel : grille à 4 colonnes avec Lot + Essentielle (O/N) sur une
 // même ligne, puis Titre / Description / Remarque en pleine largeur, Date + Conformité sur une même
 // ligne, et Réponse en pleine largeur — Conformité et Réponse sont à renseigner par le soumissionnaire
-// (CO / PC / NC, cf. convention du chapitre précédent), jamais pré-remplies par l'app.
+// (Conforme / Partiellement conforme / Non conforme, cf. convention du chapitre précédent), jamais
+// pré-remplies par l'app.
 function requirementCardXml(req) {
   const totalWidth = 9020;
   const wA = 1800, wB = 2600, wC = 1800, wD = 2820; // wA + wB + wC + wD = totalWidth
@@ -941,11 +942,11 @@ function requirementCardXml(req) {
 }
 
 function conformiteLegendXml() {
-  return docTable(["Code", "Signification"], [
-    ["CO", "Conforme à l'exigence\nLe soumissionnaire n'a aucune réserve à émettre par rapport à l'exigence stipulée dans la description de l'ouvrage (cahier des charges)."],
-    ["PC", "Partiellement conforme à l'exigence\nLe soumissionnaire ne peut pas répondre exactement à l'exigence stipulée dans la description de l'ouvrage (cahier des charges). La partie de l'exigence ne pouvant pas être remplie est explicitée en Réponse."],
-    ["NC", "Non conforme à l'exigence\nLe soumissionnaire ne peut pas du tout répondre à l'exigence stipulée dans la description de l'ouvrage (cahier des charges). Une explication peut être fournie en Réponse."],
-  ], [1, 6]);
+  return docTable(["Conformité", "Signification"], [
+    ["Conforme", "Le soumissionnaire n'a aucune réserve à émettre par rapport à l'exigence stipulée dans la description de l'ouvrage (cahier des charges)."],
+    ["Partiellement conforme", "Le soumissionnaire ne peut pas répondre exactement à l'exigence stipulée dans la description de l'ouvrage (cahier des charges). La partie de l'exigence ne pouvant pas être remplie est explicitée dans les commentaires."],
+    ["Non conforme", "Le soumissionnaire ne peut pas du tout répondre à l'exigence stipulée dans la description de l'ouvrage (cahier des charges). Une explication doit être fournie dans les commentaires."],
+  ], [1.4, 4]);
 }
 
 function packageDocx(bodyXml, filename, tender) {
@@ -972,7 +973,7 @@ const GLOSSARY_TERMS = [
   ["RTO", "Recovery Time Objective — durée maximale d'interruption admissible après incident"],
   ["RPO", "Recovery Point Objective — perte de données maximale admissible"],
   ["NDA", "Non-Disclosure Agreement — accord de confidentialité"],
-  ["CO / PC / NC", "Conforme / Partiellement conforme / Non conforme — niveaux de réponse du soumissionnaire à une exigence"],
+  ["Conformité", "Conforme / Partiellement conforme / Non conforme — niveaux de réponse du soumissionnaire à une exigence"],
   ["Bloquante", "Exigence éliminatoire : son non-respect entraîne l'exclusion de l'offre, sans notation sur une échelle"],
   ["Gré à gré", "Attribution directe à un fournisseur choisi, sans mise en concurrence formelle"],
   ["Procédure sur invitation", "Consultation d'au moins 3 fournisseurs choisis, sans publication publique"],
@@ -1070,8 +1071,10 @@ function generateDocumentFile(tender, doc) {
 // critères, contacts), et placeholders explicites [À COMPLÉTER PAR ACHATS] / [À VALIDER PAR ACHATS]
 // pour toute information non saisie — jamais d'invention.
 // Assemble le Cahier des charges au format officiel (7 chapitres, structure retrouvée dans vos
-// documents réels) : Introduction, Réponse du soumissionnaire (convention CO/PC/NC), Présentation générale,
-// Exigences et spécifications (fiches par exigence), Planification, Exigences réglementaires et modalités
+// documents réels) : Introduction, Réponse du soumissionnaire (convention Conforme/Partiellement
+// conforme/Non conforme), Présentation générale, Exigences et spécifications (vue d'ensemble par
+// domaine ; le détail de chaque exigence vit dans l'annexe Excel « Cahier de réponses », jamais
+// dupliqué en fiches dans le Word), Planification, Exigences réglementaires et modalités
 // contractuelles, Glossaire. Comme pour la Procédure AO : aucune donnée contractuelle n'est inventée.
 function buildCahierDesChargesBody(tender, schema, values) {
   const v = (key) => { const s = schema.find(x => x.key === key); const val = values[key] !== undefined ? values[key] : s?.seed; return val && val.trim() ? val : A_COMPLETER; };
@@ -1090,7 +1093,7 @@ function buildCahierDesChargesBody(tender, schema, values) {
   c.H("2.1.1. Étape 1", 3, "b_cdc_211");
   c.raw(para("Pour chaque groupe d'exigences, le soumissionnaire décrit sous la rubrique « Réponse » la solution proposée, en démontrant explicitement la compréhension et la prise en compte de l'exigence. Les réserves éventuelles sont mentionnées clairement."));
   c.H("2.1.2. Étape 2", 3, "b_cdc_212");
-  c.raw(para("Le soumissionnaire renseigne la rubrique « Conformité » en mentionnant CO, PC ou NC (voir convention ci-dessous). À défaut de précision, l'exigence est considérée comme non conforme. Pour une exigence essentielle, seule la mention CO est autorisée — toute autre mention peut entraîner l'élimination automatique de l'offre."));
+  c.raw(para("Le soumissionnaire renseigne la rubrique « Conformité » en indiquant Conforme, Partiellement conforme ou Non conforme (voir convention ci-dessous). À défaut de précision, l'exigence est considérée comme non conforme. Pour une exigence essentielle, seule la mention Conforme est autorisée — toute autre mention peut entraîner l'élimination automatique de l'offre."));
   c.H("2.1.3. Étape 3", 3, "b_cdc_213");
   c.raw(para("Après avoir complété l'ensemble des rubriques, le soumissionnaire date et signe le document."));
   c.H("2.2. Convention de présentation des exigences", 2, "b_cdc_22");
@@ -1117,23 +1120,34 @@ function buildCahierDesChargesBody(tender, schema, values) {
   }
 
   // 4. Exigences et spécifications (+ modules optionnels : licences, hébergement, support)
+  // Structure alignée sur la pratique réelle des Achats : le corps du cahier des charges reste
+  // narratif (vue d'ensemble par domaine), l'intégralité des exigences étant détaillée exclusivement
+  // dans l'annexe Excel « Cahier de réponses » — un document de 20-30 exigences ne tient déjà pas
+  // dans des fiches intégrées au Word sans devenir illisible, et ce n'est de toute façon pas ainsi
+  // que les cahiers des charges réels sont structurés.
+  const byCat = tender.requirements.filter(r => r.includeInCDC !== false).reduce((acc, r) => { (acc[r.category] = acc[r.category] || []).push(r); return acc; }, {});
+  const totalReq = Object.values(byCat).reduce((s, reqs) => s + reqs.length, 0);
   c.H("4. Exigences et spécifications", 1, "b_cdc_4");
-  c.raw(para("Chaque exigence ci-dessous doit être reprise et complétée par le soumissionnaire selon la convention définie au chapitre 2.2."));
+  c.raw(para(`Cette section présente une vue d'ensemble des exigences de la solution recherchée. L'intégralité des exigences fonctionnelles et non fonctionnelles est détaillée dans l'annexe Excel « Cahier de réponses » jointe au présent document, qui constitue le document de référence pour les réponses des soumissionnaires.`));
+  c.raw(para(`Le soumissionnaire est tenu de répondre à l'ensemble de ces exigences dans ladite annexe, en respectant le formalisme et en indiquant pour chaque exigence sa conformité (Conforme, Partiellement conforme, Non conforme) ainsi qu'une description précise de la manière dont sa solution y répond, dans la colonne Commentaires.`));
+  c.raw(para(totalReq > 0
+    ? `Important : le cahier de réponses comporte un total de ${totalReq} exigence${totalReq > 1 ? "s" : ""} à traiter. L'absence de réponse à une ou plusieurs exigences essentielles pourra entraîner l'exclusion du soumissionnaire.`
+    : A_COMPLETER, { bold: totalReq > 0 }));
   let sub = 0;
   if (opt.licences) { sub++; c.H(`4.${sub}. Licences`, 2, "b_cdc_4_lic"); c.raw(para(v("licences_desc"))); }
   if (opt.hebergement) { sub++; c.H(`4.${sub}. Mode d'hébergement de la solution`, 2, "b_cdc_4_heb"); c.raw(para(v("hebergement_desc"))); }
   if (opt.support) { sub++; c.H(`4.${sub}. Prestations de support et accompagnement technique`, 2, "b_cdc_4_sup"); c.raw(para(v("support_desc"))); }
-  const byCat = tender.requirements.filter(r => r.includeInCDC !== false).reduce((acc, r) => { (acc[r.category] = acc[r.category] || []).push(r); return acc; }, {});
   if (Object.keys(byCat).length === 0) {
     sub++;
-    c.H(`4.${sub}. Exigences détaillées`, 2, "b_cdc_4_req");
+    c.H(`4.${sub}. Domaines d'exigences`, 2, "b_cdc_4_req");
     c.raw(para(A_COMPLETER));
   } else {
+    c.raw(docTable(["Domaine", "Exigences associées"],
+      Object.entries(byCat).map(([cat, reqs]) => [cat, String(reqs.length)]), [3, 1]));
     Object.entries(byCat).forEach(([cat, reqs]) => {
       sub++;
       c.H(`4.${sub}. ${cat}`, 2, `b_cdc_4_${slug(cat)}`);
-      c.raw(para(`Le soumissionnaire répond à chacune des ${reqs.length} exigence(s) ci-dessous dans l'onglet « ${cat} » du cahier de réponses joint (colonnes Réponse et Justificatif / commentaire), en respectant la convention définie au chapitre 2.2.`, { italic: true, size: 18 }));
-      reqs.forEach(r => { c.raw(requirementCardXml(r)); });
+      c.raw(para(`Les ${reqs.length} exigence${reqs.length > 1 ? "s" : ""} de ce domaine sont détaillées dans l'onglet « ${cat} » du cahier de réponses joint.`, { italic: true, size: 18 }));
     });
   }
 
@@ -1207,7 +1221,7 @@ function buildMaintenanceCDCBody(tender, schema, values) {
   c.H("1.2.1. Étape 1", 3, "b_mcdc_121");
   c.raw(para("Pour chaque groupe d'exigences, le soumissionnaire décrit sous la rubrique « Réponse » la solution proposée, en démontrant explicitement la compréhension et la prise en compte de l'exigence. Les réserves éventuelles sont mentionnées clairement."));
   c.H("1.2.2. Étape 2", 3, "b_mcdc_122");
-  c.raw(para("Le soumissionnaire renseigne la rubrique « Conformité » en mentionnant CO, PC ou NC (voir convention ci-dessous). À défaut de précision, l'exigence est considérée comme non conforme. Pour une exigence essentielle, seule la mention CO est autorisée — toute autre mention peut entraîner l'élimination automatique de l'offre."));
+  c.raw(para("Le soumissionnaire renseigne la rubrique « Conformité » en indiquant Conforme, Partiellement conforme ou Non conforme (voir convention ci-dessous). À défaut de précision, l'exigence est considérée comme non conforme. Pour une exigence essentielle, seule la mention Conforme est autorisée — toute autre mention peut entraîner l'élimination automatique de l'offre."));
   c.H("1.2.3. Étape 3", 3, "b_mcdc_123");
   c.raw(para("Après avoir complété l'ensemble des rubriques, le soumissionnaire date et signe le document."));
   c.H("1.3. Convention de présentation des exigences", 2, "b_mcdc_13");
