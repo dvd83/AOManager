@@ -204,6 +204,18 @@ const TEXT_SCHEMAS = {
     { key: "montant_max", label: "6.5. Montant maximum du contrat (si module « Montants plafonds » activé)", seed: t.budget ? `${Number(t.budget).toLocaleString("fr-CH")} CHF (${A_VALIDER} pour le caractère ferme/plafond)` : A_COMPLETER, kind: "acquisition" },
     { key: "montant_annuel_max", label: "6.5. Montant annuel maximum (si module « Montants plafonds » activé)", seed: A_COMPLETER, kind: "acquisition" },
     { key: "resiliation", label: "6.6. Résiliation / Pénalités de retard", seed: A_COMPLETER },
+    { key: "synthese_recommandation", label: "1.1. Recommandation (étude comparative)", seed: A_COMPLETER, kind: "etude" },
+    { key: "synthese_points_attention", label: "1.2. Points d'attention pour la décision (étude comparative)", seed: A_COMPLETER, kind: "etude" },
+    { key: "hors_perimetre", label: "2.3. Hors périmètre (étude comparative)", seed: (t.scope.excluded || []).map(x => `Exclu : ${x}`).join("\n") || A_COMPLETER, kind: "etude" },
+    { key: "environnement_reference", label: "2.5. Environnement de référence (étude comparative)", seed: A_COMPLETER, kind: "etude" },
+    { key: "volumetrie_reference", label: "2.6. Volumétrie de référence (étude comparative)", seed: A_COMPLETER, kind: "etude" },
+    { key: "principes_architecture", label: "3. Principes d'architecture et de sécurité (étude comparative)", seed: A_COMPLETER, kind: "etude" },
+    { key: "scenarios", label: "5. Scénarios à explorer (étude comparative)", seed: A_COMPLETER, kind: "etude" },
+    { key: "protocole_poc", label: "6. Protocole d'évaluation et grille de notation (étude comparative)", seed: A_COMPLETER, kind: "etude" },
+    { key: "livrables", label: "7. Livrables attendus (étude comparative)", seed: A_COMPLETER, kind: "etude" },
+    { key: "gouvernance", label: "8. Gouvernance et décisions à acter (étude comparative)", seed: A_COMPLETER, kind: "etude" },
+    { key: "organisation_deploiement", label: "9. Organisation, déploiement et conduite du changement (étude comparative)", seed: A_COMPLETER, kind: "etude" },
+    { key: "sources", label: "10. Sources et références (étude comparative)", seed: A_COMPLETER, kind: "etude" },
   ],
   "SLA": (t) => [
     { key: "niveaux", label: "1. Niveaux de service couverts", seed: "" },
@@ -1021,8 +1033,9 @@ function generateDocumentFile(tender, doc) {
     return;
   }
   if (doc.name === "Cahier des charges") {
-    const body = cdcKindOf(tender) === "maintenance"
-      ? buildMaintenanceCDCBody(tender, schema, values)
+    const kind = cdcKindOf(tender);
+    const body = kind === "maintenance" ? buildMaintenanceCDCBody(tender, schema, values)
+      : kind === "etude" ? buildEtudeComparativeCDCBody(tender, schema, values)
       : buildCahierDesChargesBody(tender, schema, values);
     packageDocx(body, `${tender.reference}_${slug(doc.name)}.docx`, tender);
     return;
@@ -1315,6 +1328,96 @@ function buildMaintenanceCDCBody(tender, schema, values) {
   c.raw(docTable(["Terme", "Définition"], GLOSSARY_TERMS));
 
   let out = coverBlockXml(tender, "Cahier des charges — Support & maintenance");
+  out += tocBlockXml(c.toc());
+  out += pageBreak();
+  out += c.body();
+  return out;
+}
+
+// Structure « étude comparative » : adaptée à une démarche de type POC/comparaison de solutions, avec
+// un grand nombre d'exigences couvrant plusieurs catégories. Contrairement aux deux structures
+// précédentes, les exigences sont présentées en tableaux compacts (ID / Exigence / Priorité / Preuve
+// attendue) plutôt qu'en fiche détaillée par exigence — un format fiche par exigence deviendrait
+// illisible au-delà d'une dizaine d'exigences. La priorité reprend la criticité de l'exigence (déjà
+// en français : Bloquante, Critique, Majeure, Normale, Souhaitable), jamais une échelle anglophone.
+function buildEtudeComparativeCDCBody(tender, schema, values) {
+  const v = (key) => { const s = schema.find(x => x.key === key); const val = values[key] !== undefined ? values[key] : s?.seed; return val && val.trim() ? val : A_COMPLETER; };
+  const c = makeChapterBuilder();
+
+  c.H("1. Synthèse décisionnelle", 1, "b_etu_1");
+  c.H("1.1. Recommandation", 2, "b_etu_11");
+  c.raw(para(v("synthese_recommandation")));
+  c.H("1.2. Points d'attention pour la décision", 2, "b_etu_12");
+  c.raw(para(v("synthese_points_attention")));
+
+  c.H("2. Contexte, objectifs et périmètre", 1, "b_etu_2");
+  c.H("2.1. Contexte", 2, "b_etu_21");
+  c.raw(para(v("situation")));
+  c.H("2.2. Objectifs", 2, "b_etu_22");
+  c.raw(para(v("objectifs")));
+  c.H("2.3. Hors périmètre", 2, "b_etu_23");
+  c.raw(para(v("hors_perimetre")));
+  c.H("2.4. Cadre légal et normatif applicable", 2, "b_etu_24");
+  c.raw(para(v("cadre_legal")));
+  c.H("2.5. Environnement de référence", 2, "b_etu_25");
+  c.raw(para(v("environnement_reference")));
+  c.H("2.6. Volumétrie de référence", 2, "b_etu_26");
+  c.raw(para(v("volumetrie_reference")));
+
+  c.H("3. Principes d'architecture et de sécurité", 1, "b_etu_3");
+  c.raw(para(v("principes_architecture")));
+
+  // 4. Exigences
+  const byCat = tender.requirements.filter(r => r.includeInCDC !== false).reduce((acc, r) => { (acc[r.category] = acc[r.category] || []).push(r); return acc; }, {});
+  c.H("4. Exigences", 1, "b_etu_4");
+  c.raw(para("Chaque exigence est identifiée, priorisée (Bloquante, Critique, Majeure, Normale ou Souhaitable — voir Annexe A) et assortie d'une preuve attendue de la part des solutions ou équipes évaluées."));
+  if (Object.keys(byCat).length === 0) {
+    c.raw(para(A_COMPLETER));
+  } else {
+    Object.entries(byCat).forEach(([cat, reqs]) => {
+      c.raw(para(cat, { bold: true, size: 20, color: DOCX_NAVY }));
+      c.raw(docTable(["ID", "Exigence", "Priorité", "Preuve attendue"],
+        reqs.map(r => [r.id, r.description, r.criticality || "Normale", r.verificationMethod || A_COMPLETER])));
+    });
+  }
+
+  c.H("5. Scénarios à explorer", 1, "b_etu_5");
+  c.raw(para(v("scenarios")));
+
+  c.H("6. Protocole d'évaluation et grille de notation", 1, "b_etu_6");
+  c.raw(para(v("protocole_poc")));
+  c.raw(docTable(["Critère", "Pondération", "Note (sur 5)", "Commentaire"], [[A_COMPLETER, A_COMPLETER, A_COMPLETER, A_COMPLETER]]));
+
+  c.H("7. Livrables attendus", 1, "b_etu_7");
+  c.raw(para(v("livrables")));
+
+  c.H("8. Gouvernance et décisions à acter", 1, "b_etu_8");
+  c.raw(para(v("gouvernance")));
+
+  c.H("9. Organisation, déploiement et conduite du changement", 1, "b_etu_9");
+  c.raw(para(v("organisation_deploiement")));
+
+  c.H("10. Sources et références", 1, "b_etu_10");
+  c.raw(para(v("sources")));
+
+  c.raw(pageBreak());
+  c.H("Annexe A — Échelle de priorité", 1, "b_etu_a");
+  c.raw(para("Chaque exigence est priorisée selon l'échelle suivante, utilisée de manière homogène dans l'ensemble du document."));
+  c.raw(docTable(["Niveau", "Signification"], [
+    ["Bloquante", "Exigence indispensable, non négociable : son absence élimine la solution évaluée."],
+    ["Critique", "Exigence très importante, à satisfaire sauf justification forte."],
+    ["Majeure", "Exigence importante, attendue mais négociable selon le contexte."],
+    ["Normale", "Exigence standard, apportant une amélioration attendue."],
+    ["Souhaitable", "Exigence facultative, un atout supplémentaire non obligatoire."],
+  ]));
+  c.H("Annexe B — Modèle de matrice de réponse", 1, "b_etu_b");
+  c.raw(para("Pour chaque exigence, la solution ou l'équipe évaluée indique son niveau de conformité et sa réponse, selon la convention suivante :"));
+  c.raw(conformiteLegendXml());
+  c.raw(pageBreak());
+  c.H("Annexe C — Glossaire", 1, "b_etu_c");
+  c.raw(docTable(["Terme", "Définition"], GLOSSARY_TERMS));
+
+  let out = coverBlockXml(tender, "Cahier des charges — Étude comparative");
   out += tocBlockXml(c.toc());
   out += pageBreak();
   out += c.body();
@@ -2396,11 +2499,12 @@ function CDCStructurePanel({ tender, updateTender }) {
   return (
     <Card className="p-5 mb-3" style={{ backgroundColor: C.accentSoft, borderColor: C.accent }}>
       <div className="text-sm font-semibold mb-1" style={{ color: C.ink }}>Type de cahier des charges</div>
-      <div className="text-xs mb-3" style={{ color: C.inkSoft }}>Les deux structures sont très différentes (mise en service / VA-VSR pour une acquisition, contre SLA / guichet de support pour une maintenance) — choisissez celle qui correspond au marché.</div>
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mb-4">
+      <div className="text-xs mb-3" style={{ color: C.inkSoft }}>Les trois structures sont très différentes (mise en service / VA-VSR pour une acquisition, SLA / guichet de support pour une maintenance, grille d'exigences + protocole de POC pour une étude comparative) — choisissez celle qui correspond au marché.</div>
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 mb-4">
         {[
           { v: "acquisition", label: "Acquisition logicielle / matérielle", hint: "Achat et intégration d'une solution : exigences détaillées par domaine, mise en service, garantie." },
           { v: "maintenance", label: "Support & maintenance", hint: "Reconduction d'un contrat sur un périmètre existant : SLA, guichet de support, facturation récurrente." },
+          { v: "etude", label: "Étude comparative / POC", hint: "Comparaison de plusieurs solutions avant adjudication : grille d'exigences par catégorie, scénarios, protocole d'évaluation et grille de notation." },
         ].map(o => (
           <button key={o.v} onClick={() => setKind(o.v)} className="text-left p-2 rounded" style={{ backgroundColor: kind === o.v ? C.accent : C.surface, border: `1px solid ${kind === o.v ? C.accent : C.border}` }}>
             <div className="text-sm font-medium" style={{ color: kind === o.v ? "#fff" : C.ink }}>{o.label}</div>
