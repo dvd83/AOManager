@@ -949,10 +949,36 @@ function conformiteLegendXml() {
   ], [1.4, 4]);
 }
 
-function packageDocx(bodyXml, filename, tender) {
-  const documentXml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" xmlns:wp="http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing" xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" xmlns:pic="http://schemas.openxmlformats.org/drawingml/2006/picture" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><w:body>${bodyXml}<w:sectPr><w:pgSz w:w="11906" w:h="16838"/><w:pgMar w:top="1417" w:right="1417" w:bottom="1417" w:left="1417" w:header="708" w:footer="708" w:gutter="0"/></w:sectPr></w:body></w:document>`;
-  const contentTypes = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/><Override PartName="/docProps/core.xml" ContentType="application/vnd.openxmlformats-package.core-properties+xml"/></Types>`;
+// En-tête/pied de page professionnels : référence + titre de l'AO en en-tête, numérotation de page
+// (Page X / Y) en pied de page, sur toutes les pages sauf la couverture (titlePg + en-tête/pied
+// "first" vides) — un document réel n'a jamais de texte courant répété sur sa page de garde.
+function headerFooterXml(tender, docLabel) {
+  const headerDefault = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n<w:hdr xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">` +
+    `<w:p><w:pPr><w:pBdr><w:bottom w:val="single" w:sz="6" w:space="4" w:color="${DOCX_BORDER}"/></w:pBdr><w:tabs><w:tab w:val="right" w:pos="9020"/></w:tabs><w:spacing w:after="0"/></w:pPr>` +
+    `<w:r><w:rPr><w:b/><w:sz w:val="16"/><w:color w:val="${DOCX_NAVY}"/></w:rPr><w:t xml:space="preserve">${xmlEscape(tender.reference || "")}</w:t></w:r>` +
+    `<w:r><w:rPr><w:sz w:val="16"/><w:color w:val="${DOCX_INK_SOFT}"/></w:rPr><w:tab/><w:t xml:space="preserve">${xmlEscape(docLabel || "")}</w:t></w:r></w:p></w:hdr>`;
+  const headerFirst = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n<w:hdr xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:p/></w:hdr>`;
+  const footerDefault = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n<w:ftr xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">` +
+    `<w:p><w:pPr><w:pBdr><w:top w:val="single" w:sz="6" w:space="4" w:color="${DOCX_BORDER}"/></w:pBdr><w:jc w:val="center"/><w:spacing w:before="0"/></w:pPr>` +
+    `<w:r><w:rPr><w:sz w:val="16"/><w:color w:val="${DOCX_INK_SOFT}"/></w:rPr><w:t xml:space="preserve">Page </w:t></w:r>` +
+    `<w:r><w:rPr><w:sz w:val="16"/><w:color w:val="${DOCX_INK_SOFT}"/></w:rPr><w:fldChar w:fldCharType="begin"/></w:r>` +
+    `<w:r><w:rPr><w:sz w:val="16"/><w:color w:val="${DOCX_INK_SOFT}"/></w:rPr><w:instrText xml:space="preserve"> PAGE </w:instrText></w:r>` +
+    `<w:r><w:rPr><w:sz w:val="16"/><w:color w:val="${DOCX_INK_SOFT}"/></w:rPr><w:fldChar w:fldCharType="end"/></w:r>` +
+    `<w:r><w:rPr><w:sz w:val="16"/><w:color w:val="${DOCX_INK_SOFT}"/></w:rPr><w:t xml:space="preserve"> / </w:t></w:r>` +
+    `<w:r><w:rPr><w:sz w:val="16"/><w:color w:val="${DOCX_INK_SOFT}"/></w:rPr><w:fldChar w:fldCharType="begin"/></w:r>` +
+    `<w:r><w:rPr><w:sz w:val="16"/><w:color w:val="${DOCX_INK_SOFT}"/></w:rPr><w:instrText xml:space="preserve"> NUMPAGES </w:instrText></w:r>` +
+    `<w:r><w:rPr><w:sz w:val="16"/><w:color w:val="${DOCX_INK_SOFT}"/></w:rPr><w:fldChar w:fldCharType="end"/></w:r></w:p></w:ftr>`;
+  const footerFirst = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n<w:ftr xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:p/></w:ftr>`;
+  return { headerDefault, headerFirst, footerDefault, footerFirst };
+}
+
+function packageDocx(bodyXml, filename, tender, docLabel) {
+  const { headerDefault, headerFirst, footerDefault, footerFirst } = headerFooterXml(tender, docLabel);
+  const sectPr = `<w:sectPr><w:headerReference w:type="default" r:id="rIdHeader"/><w:headerReference w:type="first" r:id="rIdHeaderFirst"/><w:footerReference w:type="default" r:id="rIdFooter"/><w:footerReference w:type="first" r:id="rIdFooterFirst"/><w:pgSz w:w="11906" w:h="16838"/><w:pgMar w:top="1417" w:right="1417" w:bottom="1417" w:left="1417" w:header="708" w:footer="708" w:gutter="0"/><w:titlePg/></w:sectPr>`;
+  const documentXml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" xmlns:wp="http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing" xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" xmlns:pic="http://schemas.openxmlformats.org/drawingml/2006/picture" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><w:body>${bodyXml}${sectPr}</w:body></w:document>`;
+  const contentTypes = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/><Override PartName="/word/header1.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.header+xml"/><Override PartName="/word/header2.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.header+xml"/><Override PartName="/word/footer1.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.footer+xml"/><Override PartName="/word/footer2.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.footer+xml"/><Override PartName="/docProps/core.xml" ContentType="application/vnd.openxmlformats-package.core-properties+xml"/></Types>`;
   const rootRels = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="word/document.xml"/><Relationship Id="rId2" Type="http://schemas.openxmlformats.org/package/2006/relationships/metadata/core-properties" Target="docProps/core.xml"/></Relationships>`;
+  const documentRels = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rIdHeader" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/header" Target="header1.xml"/><Relationship Id="rIdHeaderFirst" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/header" Target="header2.xml"/><Relationship Id="rIdFooter" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/footer" Target="footer1.xml"/><Relationship Id="rIdFooterFirst" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/footer" Target="footer2.xml"/></Relationships>`;
   const coreProps = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n<cp:coreProperties xmlns:cp="http://schemas.openxmlformats.org/package/2006/metadata/core-properties" xmlns:dc="http://purl.org/dc/elements/1.1/"><dc:title>${xmlEscape(filename)}</dc:title><dc:creator>AO Manager</dc:creator></cp:coreProperties>`;
 
   const files = [
@@ -960,6 +986,11 @@ function packageDocx(bodyXml, filename, tender) {
     { name: "_rels/.rels", data: strToBytes(rootRels) },
     { name: "docProps/core.xml", data: strToBytes(coreProps) },
     { name: "word/document.xml", data: strToBytes(documentXml) },
+    { name: "word/_rels/document.xml.rels", data: strToBytes(documentRels) },
+    { name: "word/header1.xml", data: strToBytes(headerDefault) },
+    { name: "word/header2.xml", data: strToBytes(headerFirst) },
+    { name: "word/footer1.xml", data: strToBytes(footerDefault) },
+    { name: "word/footer2.xml", data: strToBytes(footerFirst) },
   ];
   const zipBytes = makeZip(files);
   downloadBlob(filename, zipBytes, "application/vnd.openxmlformats-officedocument.wordprocessingml.document");
@@ -995,7 +1026,7 @@ function generateDocumentFile(tender, doc) {
     questions.forEach((q, i) => {
       body += labelValueTable([["Identifiant", `Question n°${i + 1}`], ["Question", q.question], ["Réponse", ""]]);
     });
-    packageDocx(body, `${tender.reference}_${slug(doc.name)}.docx`, tender);
+    packageDocx(body, `${tender.reference}_${slug(doc.name)}.docx`, tender, doc.name);
     return;
   }
   if (TABLE_DOC_NAMES.includes(doc.name)) {
@@ -1036,7 +1067,7 @@ function generateDocumentFile(tender, doc) {
   const values = doc.content?.sections || {};
 
   if (doc.name === "Procédure AO") {
-    packageDocx(buildProcedureAOBody(tender, schema, values), `${tender.reference}_${slug(doc.name)}.docx`, tender);
+    packageDocx(buildProcedureAOBody(tender, schema, values), `${tender.reference}_${slug(doc.name)}.docx`, tender, doc.name);
     return;
   }
   if (doc.name === "Cahier des charges") {
@@ -1044,11 +1075,11 @@ function generateDocumentFile(tender, doc) {
     const body = kind === "maintenance" ? buildMaintenanceCDCBody(tender, schema, values)
       : kind === "etude" ? buildEtudeComparativeCDCBody(tender, schema, values)
       : buildCahierDesChargesBody(tender, schema, values);
-    packageDocx(body, `${tender.reference}_${slug(doc.name)}.docx`, tender);
+    packageDocx(body, `${tender.reference}_${slug(doc.name)}.docx`, tender, doc.name);
     return;
   }
   if (doc.name === K2_DOC_NAME) {
-    packageDocx(buildK2Body(tender), `${tender.reference}_K2.docx`, tender);
+    packageDocx(buildK2Body(tender), `${tender.reference}_K2.docx`, tender, K2_DOC_NAME);
     return;
   }
 
@@ -1063,7 +1094,7 @@ function generateDocumentFile(tender, doc) {
     body += para(val && val.trim() ? val : "(à compléter)");
   });
   body += glossaryXml();
-  packageDocx(body, `${tender.reference}_${slug(doc.name)}.docx`, tender);
+  packageDocx(body, `${tender.reference}_${slug(doc.name)}.docx`, tender, doc.name);
 }
 
 // Assemble le document "Procédure AO" au format opérationnel Achats : sections numérotées 1 à 16,
@@ -3016,7 +3047,7 @@ function RequirementsTab({ t, updateTender }) {
         {suggestError && <div className="text-xs mt-3" style={{ color: C.red }}>{suggestError}</div>}
 
         {seedPickerOpen && (
-          <div className="mt-4 p-3 rounded" style={{ backgroundColor: C.slateSoft }}>
+          <div className="mt-4 p-3 rounded ao-fade-in" style={{ backgroundColor: C.slateSoft }}>
             <div className="text-xs mb-2" style={{ color: C.inkSoft }}>Cochez celles qui correspondent réellement à ce marché — à adapter ensuite selon votre connaissance technique du périmètre.</div>
             <div className="space-y-1.5">
               {MAINTENANCE_REQUIREMENT_SEEDS.map((s, i) => (
@@ -3033,7 +3064,7 @@ function RequirementsTab({ t, updateTender }) {
         )}
 
         {formOpen && (
-        <div className="mt-4 pt-4" style={{ borderTop: `1px solid ${C.borderSoft}` }}>
+        <div className="mt-4 pt-4 ao-fade-in" style={{ borderTop: `1px solid ${C.borderSoft}` }}>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <label className="text-sm"><div className="mb-1" style={{ color: C.inkSoft }}>Type d'exigence</div>
             <select value={form.category} onChange={e => setForm(f => ({ ...f, category: e.target.value }))} className="w-full px-3 py-2 rounded text-sm outline-none" style={inputStyle}>
@@ -3740,7 +3771,7 @@ function SynthesisTab({ t }) {
     let body = coverBlockXml(t, "Synthèse finale");
     body += metaAndHistoryXml(t);
     sections.forEach(s => { body += heading(s.label, 1); body += para(s.text && s.text.trim() ? s.text : "(à compléter)"); });
-    packageDocx(body + glossaryXml(), `${t.reference}_synthese.docx`, t);
+    packageDocx(body + glossaryXml(), `${t.reference}_synthese.docx`, t, "Synthèse finale");
   }
 
   return (
@@ -3941,16 +3972,18 @@ function TenderDetail({ tender, updateTender, back, onDelete, isAdmin, evaluator
           );
         })}
       </div>
-      {tab === "info" && <InfoTab t={tender} updateTender={updateTender} />}
-      {tab === "need" && <NeedTab t={tender} updateTender={updateTender} />}
-      {tab === "documents" && <DocumentsTab t={tender} updateTender={updateTender} />}
-      {tab === "requirements" && <RequirementsTab t={tender} updateTender={updateTender} />}
-      {tab === "criteria" && <CriteriaTab t={tender} updateTender={updateTender} />}
-      {tab === "suppliers" && <SuppliersTab t={tender} updateTender={updateTender} />}
-      {tab === "evaluation" && <EvaluationTab t={tender} updateTender={updateTender} evaluatorName={evaluatorName} />}
-      {tab === "comparison" && <ComparisonTab t={tender} />}
-      {tab === "synthesis" && <SynthesisTab t={tender} />}
-      {tab === "history" && <HistoryTab t={tender} />}
+      <div key={tab} className="ao-view-enter">
+        {tab === "info" && <InfoTab t={tender} updateTender={updateTender} />}
+        {tab === "need" && <NeedTab t={tender} updateTender={updateTender} />}
+        {tab === "documents" && <DocumentsTab t={tender} updateTender={updateTender} />}
+        {tab === "requirements" && <RequirementsTab t={tender} updateTender={updateTender} />}
+        {tab === "criteria" && <CriteriaTab t={tender} updateTender={updateTender} />}
+        {tab === "suppliers" && <SuppliersTab t={tender} updateTender={updateTender} />}
+        {tab === "evaluation" && <EvaluationTab t={tender} updateTender={updateTender} evaluatorName={evaluatorName} />}
+        {tab === "comparison" && <ComparisonTab t={tender} />}
+        {tab === "synthesis" && <SynthesisTab t={tender} />}
+        {tab === "history" && <HistoryTab t={tender} />}
+      </div>
     </div>
   );
 }
